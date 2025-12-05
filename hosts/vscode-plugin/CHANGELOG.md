@@ -5,7 +5,7 @@ All notable changes to the OpenCode VSCode extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [25.12.xx] - 2025-12-xx
+## [25.12.05] - 2025-12-05
 
 - Auto refresh files in IDE on edit/write
 - New panel with all modified files in session

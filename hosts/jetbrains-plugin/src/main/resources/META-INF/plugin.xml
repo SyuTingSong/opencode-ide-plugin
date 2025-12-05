@@ -1,7 +1,7 @@
 <idea-plugin>
   <vendor email="paviko.github.sitting433@slmails.com" url="https://github.com/paviko/opencode-ide-plugin">paviko</vendor>
   <id>paviko</id>
-  <name>OpenCode (unofficial)</name>
+  <name>OpenCode UX+ (unofficial)</name>
   <description>Runs local OpenCode backend and displays the chat UI.</description>
 
   <depends>com.intellij.modules.platform</depends>
