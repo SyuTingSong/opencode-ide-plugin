@@ -205,7 +205,6 @@ const markdownComponents: Partial<Components> = {
 export function MarkdownRenderer({ children }: MarkdownRendererProps) {
   return (
     <div className="markdown-content">
-      {/* @ts-expect-error - React 19 type incompatibility with react-markdown v10 */}
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {children}
       </ReactMarkdown>

@@ -14,7 +14,8 @@
     "lint": "echo 'Running lint checks...' && bun test --coverage",
     "format": "echo 'Formatting code...' && bun run --prettier --write src/**/*.ts",
     "docs": "echo 'Generating documentation...' && find src -name '*.ts' -exec echo 'Processing: {}' \\;",
-    "deploy": "echo 'Deploying application...' && bun run build && echo 'Deployment completed successfully'"
+    "deploy": "echo 'Deploying application...' && bun run build && echo 'Deployment completed successfully'",
+    "build:webgui": "cd webgui && bun run build"
   },
   "bin": {
     "opencode": "./bin/opencode"
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@babel/core": "7.28.4",
+    "@babel/preset-typescript": "7.27.1",
     "@octokit/webhooks-types": "7.6.1",
     "@parcel/watcher-darwin-arm64": "2.5.1",
     "@parcel/watcher-darwin-x64": "2.5.1",
@@ -38,6 +40,7 @@
     "@types/bun": "catalog:",
     "@types/turndown": "5.0.5",
     "@types/yargs": "17.0.33",
+    "babel-preset-solid": "1.9.10",
     "typescript": "catalog:",
     "@typescript/native-preview": "catalog:",
     "vscode-languageserver-types": "3.17.5",
@@ -62,6 +65,7 @@
     "@clack/prompts": "1.0.0-alpha.1",
     "@hono/standard-validator": "0.1.5",
     "@hono/zod-validator": "catalog:",
+    "@iarna/toml": "2.2.5",
     "@modelcontextprotocol/sdk": "1.15.1",
     "@octokit/graphql": "9.0.2",
     "@octokit/rest": "catalog:",

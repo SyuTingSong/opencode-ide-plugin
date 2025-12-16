@@ -4,6 +4,7 @@ import { GlobalBus } from "@/bus/global"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono } from "hono"
+import type { Context } from "hono"
 import { cors } from "hono/cors"
 import { stream, streamSSE } from "hono/streaming"
 import { proxy } from "hono/proxy"
@@ -29,6 +30,7 @@ import { Command } from "../command"
 import { ProviderAuth } from "../provider/auth"
 import { Global } from "../global"
 import { ProjectRoute } from "./project"
+import { WebGuiRoute } from "../webgui/server/webgui.ts"
 import { ToolRegistry } from "../tool/registry"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import { SessionPrompt } from "../session/prompt"
@@ -47,9 +49,110 @@ import { SessionStatus } from "@/session/status"
 import { upgradeWebSocket, websocket } from "hono/bun"
 import { errors } from "./error"
 import { Pty } from "@/pty"
+import * as State from "@/webgui/state/state"
+import path from "path"
+import * as fs from "fs"
+import { fileURLToPath } from "url"
+import { embeddedWebGui } from "../webgui/embed.generated"
+import { Buffer } from "node:buffer"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
+
+const embeddedWebGuiMap = new Map<string, string>(
+  embeddedWebGui.map((item): [string, string] => [item.path, item.data]),
+)
+
+const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
+const webGuiCandidates = [
+  path.join(moduleDirectory, "../../webgui-dist"),
+  path.resolve(path.dirname(process.execPath), "../packages/opencode/webgui-dist"),
+  path.resolve(process.cwd(), "packages/opencode/webgui-dist"),
+  path.resolve(process.cwd(), "../packages/opencode/webgui-dist"),
+]
+
+function existingWebGuiRoot() {
+  const existing = webGuiCandidates.find((candidate) => fs.existsSync(path.join(candidate, "index.html")))
+  return existing ?? webGuiCandidates[0]
+}
+
+const webGuiRoot = existingWebGuiRoot()
+
+function webGuiRelative(pathname: string) {
+  const withoutPrefix = pathname.replace(/^\/app/, "")
+  const trimmed = withoutPrefix.replace(/^\/+/, "")
+  if (trimmed.length === 0) return "index.html"
+  if (trimmed.endsWith("/")) return trimmed + "index.html"
+  return trimmed
+}
+
+function webGuiContentType(relativePath: string) {
+  if (relativePath.endsWith(".html")) return "text/html; charset=utf-8"
+  if (relativePath.endsWith(".js")) return "application/javascript; charset=utf-8"
+  if (relativePath.endsWith(".css")) return "text/css; charset=utf-8"
+  if (relativePath.endsWith(".svg")) return "image/svg+xml"
+  if (relativePath.endsWith(".png")) return "image/png"
+  if (relativePath.endsWith(".jpg") || relativePath.endsWith(".jpeg")) return "image/jpeg"
+  if (relativePath.endsWith(".gif")) return "image/gif"
+  if (relativePath.endsWith(".webp")) return "image/webp"
+  if (relativePath.endsWith(".ico")) return "image/x-icon"
+  if (relativePath.endsWith(".json")) return "application/json; charset=utf-8"
+  if (relativePath.endsWith(".txt")) return "text/plain; charset=utf-8"
+  if (relativePath.endsWith(".map")) return "application/json; charset=utf-8"
+  return "application/octet-stream"
+}
+
+function serveWebGuiFromFs(relativePath: string) {
+  const fullPath = path.join(webGuiRoot, relativePath)
+  if (!fs.existsSync(fullPath)) return
+  const file = Bun.file(fullPath)
+  return new Response(file, {
+    headers: {
+      "Content-Type": webGuiContentType(relativePath),
+      "Cache-Control": "public, max-age=3600",
+    },
+  })
+}
+
+function serveWebGuiFromEmbed(relativePath: string) {
+  const encoded = embeddedWebGuiMap.get(relativePath)
+  if (!encoded) return
+  const buffer = Buffer.from(encoded, "base64")
+  const body = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+  return new Response(body, {
+    headers: {
+      "Content-Type": webGuiContentType(relativePath),
+      "Cache-Control": "public, max-age=3600",
+    },
+  })
+}
+
+function serveWebGui(pathname: string) {
+  const relativePath = webGuiRelative(pathname)
+  const fsResponse = serveWebGuiFromFs(relativePath)
+  if (fsResponse) return fsResponse
+  const embedResponse = serveWebGuiFromEmbed(relativePath)
+  if (embedResponse) return embedResponse
+  if (!relativePath.includes(".")) {
+    const fallbackFs = serveWebGuiFromFs("index.html")
+    if (fallbackFs) return fallbackFs
+    const fallbackEmbed = serveWebGuiFromEmbed("index.html")
+    if (fallbackEmbed) return fallbackEmbed
+  }
+}
+
+function handleWebGui(c: Context) {
+  const response = serveWebGui(c.req.path)
+  if (response) return response
+  return c.text("Not Found", 404)
+}
+
+function handleWebGuiRoot(c: Context) {
+  const response = serveWebGui("index.html")
+  if (response) return response
+  return c.text("Not Found", 404)
+
+}
 
 export namespace Server {
   const log = Log.create({ service: "server" })
@@ -200,6 +303,14 @@ export namespace Server {
           async fn() {
             return next()
           },
+        }).catch((err) => {
+          console.log("Caught Error in Instance.provide:", err, err.code, err.message);
+          if (err instanceof Storage.NotFoundError) return c.text(err.message, 404)
+          // If the directory doesn't exist or is invalid, return 400
+          if (err.code === "ENOENT" || err.message.includes("No such file or directory")) {
+            return c.text(`Invalid directory: ${directory}`, 400)
+          }
+          throw err
         })
       })
       .get(
@@ -2506,6 +2617,11 @@ export namespace Server {
           })
         },
       )
+      // Mount Web GUI API routes
+      .route("/app/api", WebGuiRoute)
+      // Serve Web GUI static files, prioritizing filesystem assets and falling back to embedded bundle
+      .get("/app", handleWebGui)
+      .get("/app/*", handleWebGui)
       .all("/*", async (c) => {
         return proxy(`https://desktop.opencode.ai${c.req.path}`, {
           ...c.req,

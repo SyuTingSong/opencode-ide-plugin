@@ -49,6 +49,9 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.45.0",
     "vite": "catalog:",
-    "vitest": "4.0.13"
+    "vitest": "4.0.13",
+    "quansync": "^0.2.11",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   }
 }
