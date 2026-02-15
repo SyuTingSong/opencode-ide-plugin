@@ -128,17 +128,10 @@ jobs:
 
       - name: Build webgui for gui-only variant
         run: |
+          # Use bun from repo root since this is a Bun workspace monorepo
           cd packages/opencode/webgui
-          if [ -f pnpm-lock.yaml ]; then
-            pnpm install --frozen-lockfile
-            pnpm run build
-          elif [ -f bun.lock ] || [ -f bun.lockb ]; then
-            bun install --frozen-lockfile
-            bun run build
-          else
-            npm ci
-            npm run build
-          fi
+          bun install --frozen-lockfile
+          bun run build
 
       - name: Package VSCode plugin (gui-only) from staging
         working-directory: hosts/vscode-plugin
