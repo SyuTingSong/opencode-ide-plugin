@@ -39,7 +39,11 @@ export function useKeyboardShortcuts({
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey
       const target = e.target as HTMLElement
-      const isInputField = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable
+      const isInputField =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable ||
+        target.closest?.('[contenteditable="true"]') != null
 
       // Escape: Close modal (works everywhere)
       if (e.key === "Escape" && isModalOpen) {
