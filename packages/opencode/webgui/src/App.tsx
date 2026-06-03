@@ -126,14 +126,14 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
         const paths = (msg.payload?.paths ?? msg.paths) as string[] | undefined
         if (Array.isArray(paths) && paths.length > 0) {
           messageInputRef.current?.focus()
-          messageInputRef.current?.insertPaths(paths)
+          queueMicrotask(() => messageInputRef.current?.insertPaths(paths))
         }
       }
       if (msg.type === "pastePath") {
         const path = (msg.payload?.path ?? msg.path) as string | undefined
         if (typeof path === "string" && path.length > 0) {
           messageInputRef.current?.focus()
-          messageInputRef.current?.pastePath(path)
+          queueMicrotask(() => messageInputRef.current?.pastePath(path))
         }
       }
       if (msg.type === "drag-event") {
