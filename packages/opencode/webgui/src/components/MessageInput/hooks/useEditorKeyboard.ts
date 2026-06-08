@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, type LexicalEditor } from "lexical"
 import { insertPlainWithMentionsImpl } from "../utils"
 
@@ -9,22 +9,38 @@ interface UseEditorKeyboardOptions {
   onSubmit: () => void
 }
 
+function isEnterToSendEnabled(): boolean {
+  try {
+    return window.localStorage.getItem("opencode-enter-to-send") === "true"
+  } catch {
+    return false
+  }
+}
+
 export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, onSubmit }: UseEditorKeyboardOptions) {
-  // Register Cmd/Ctrl+Enter command
+  const onSubmitRef = useRef(onSubmit)
+  onSubmitRef.current = onSubmit
+
   useEffect(() => {
     return editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event) => {
-        if ((event?.metaKey || event?.ctrlKey) && event.key === "Enter") {
+        const isMod = event?.metaKey || event?.ctrlKey
+        if (isMod && event?.key === "Enter") {
           event?.preventDefault()
-          onSubmit()
+          onSubmitRef.current()
+          return true
+        }
+        if (!isMod && event?.key === "Enter" && isEnterToSendEnabled()) {
+          event?.preventDefault()
+          onSubmitRef.current()
           return true
         }
         return false
       },
       COMMAND_PRIORITY_HIGH,
     )
-  }, [editor, onSubmit])
+  }, [editor])
 
   // Handle paste with mentions parsing
   useEffect(() => {

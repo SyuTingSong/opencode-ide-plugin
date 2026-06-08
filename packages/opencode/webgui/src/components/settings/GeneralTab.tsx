@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import type { Config } from "@opencode-ai/sdk/client"
 import { useProject } from "../../state/ProjectContext"
 
@@ -6,8 +7,27 @@ interface GeneralTabProps {
   setFormData: (data: Partial<Config>) => void
 }
 
+function useEnterToSend() {
+  const [enabled, setEnabled] = useState(() => {
+    try {
+      return window.localStorage.getItem("opencode-enter-to-send") === "true"
+    } catch {
+      return false
+    }
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("opencode-enter-to-send", String(enabled))
+    } catch {}
+  }, [enabled])
+
+  return [enabled, setEnabled] as const
+}
+
 export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
   const { worktree } = useProject()
+  const [enterToSend, setEnterToSend] = useEnterToSend()
   return (
     <div className="space-y-4">
       <div>
@@ -62,6 +82,21 @@ export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
           <option value="disabled">Disabled</option>
         </select>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Control session sharing behavior</p>
+      </div>
+
+      <div>
+        <label className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            checked={enterToSend}
+            onChange={(e) => setEnterToSend(e.target.checked)}
+            className="rounded border-gray-300 dark:border-gray-700"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300">Press Enter to send messages</span>
+        </label>
+        <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">
+          When enabled, press Enter to send. Use Shift+Enter for a new line. When disabled, use Cmd/Ctrl+Enter to send.
+        </p>
       </div>
 
       <div>
