@@ -5,18 +5,15 @@ export function useUnsavedChanges(
   formData: Partial<Config>,
   originalFormData: Partial<Config>,
   apiKeys: Record<string, string>,
+  extraChanged?: boolean,
 ) {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   const hasUnsavedChanges = useCallback(() => {
-    // Check if form data changed
     const formChanged = JSON.stringify(formData) !== JSON.stringify(originalFormData)
-
-    // Check if any API keys were entered
     const apiKeysEntered = Object.values(apiKeys).some((key) => key.trim() !== "")
-
-    return formChanged || apiKeysEntered
-  }, [formData, originalFormData, apiKeys])
+    return formChanged || apiKeysEntered || !!extraChanged
+  }, [formData, originalFormData, apiKeys, extraChanged])
 
   return {
     hasUnsavedChanges,

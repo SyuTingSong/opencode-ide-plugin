@@ -11,9 +11,10 @@ interface UseEditorKeyboardOptions {
 
 function isEnterToSendEnabled(): boolean {
   try {
-    return window.localStorage.getItem("opencode-enter-to-send") === "true"
+    const value = window.localStorage.getItem("opencode-enter-to-send")
+    return value === null ? true : value === "true"
   } catch {
-    return false
+    return true
   }
 }
 
@@ -31,7 +32,7 @@ export function useEditorKeyboard({ editor, contentEditableRef, parseWithRange, 
           onSubmitRef.current()
           return true
         }
-        if (!isMod && event?.key === "Enter" && isEnterToSendEnabled()) {
+        if (!isMod && !event?.shiftKey && event?.key === "Enter" && isEnterToSendEnabled()) {
           event?.preventDefault()
           onSubmitRef.current()
           return true

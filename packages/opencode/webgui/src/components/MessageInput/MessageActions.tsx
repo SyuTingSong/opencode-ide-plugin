@@ -39,16 +39,20 @@ export function MessageActions({
           className="h-6 w-6 flex items-center justify-center text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 disabled:opacity-30 disabled:cursor-not-allowed"
           title={(() => {
             try {
-              return window.localStorage.getItem("opencode-enter-to-send") === "true" ? "Send (Enter)" : "Send (Cmd/Ctrl+Enter)"
+              const value = window.localStorage.getItem("opencode-enter-to-send")
+              const enabled = value === null ? true : value === "true"
+              return enabled ? "Send (Enter)" : "Send (Cmd/Ctrl+Enter)"
             } catch {
-              return "Send (Cmd/Ctrl+Enter)"
+              return "Send (Enter)"
             }
           })()}
           data-tip={(() => {
             try {
-              return window.localStorage.getItem("opencode-enter-to-send") === "true" ? "Send (Enter)" : "Send (Cmd/Ctrl+Enter)"
+              const value = window.localStorage.getItem("opencode-enter-to-send")
+              const enabled = value === null ? true : value === "true"
+              return enabled ? "Send (Enter)" : "Send (Cmd/Ctrl+Enter)"
             } catch {
-              return "Send (Cmd/Ctrl+Enter)"
+              return "Send (Enter)"
             }
           })()}
         >

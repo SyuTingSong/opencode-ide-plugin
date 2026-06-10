@@ -91,6 +91,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         val statusLabel = JLabel("Starting backend...")
         val restartButton = JButton("Restart Server").apply {
             isVisible = false
+            isFocusable = false
         }
         val toolbarPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(4)

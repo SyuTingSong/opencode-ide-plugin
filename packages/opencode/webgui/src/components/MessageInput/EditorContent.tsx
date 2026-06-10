@@ -14,7 +14,20 @@ interface EditorContentProps {
   onEditorChange: (editorState: EditorState) => void
 }
 
+function getSendHint() {
+  try {
+    const value = window.localStorage.getItem("opencode-enter-to-send")
+    const enabled = value === null ? true : value === "true"
+    return enabled
+      ? "Ask anything (Enter to send)"
+      : "Ask anything (Cmd/Ctrl+Enter to send)"
+  } catch {
+    return "Ask anything (Enter to send)"
+  }
+}
+
 export function EditorContent({ contentEditableRef, containerRef, onEditorChange }: EditorContentProps) {
+  const sendHint = getSendHint()
   return (
     <div className="px-2 pt-1.5 pb-1">
       <div ref={containerRef} className="relative modern-input bg-white dark:bg-gray-900">
@@ -25,10 +38,10 @@ export function EditorContent({ contentEditableRef, containerRef, onEditorChange
               ref={contentEditableRef}
               className="px-2 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none min-h-[32px] max-h-[400px] overflow-y-auto"
               style={{ caretColor: "auto" }}
-              aria-placeholder="Ask anything (Cmd/Ctrl+Enter to send)"
+              aria-placeholder={sendHint}
               placeholder={
                 <div className="absolute top-1.5 left-2 text-sm text-gray-400 dark:text-gray-500 pointer-events-none">
-                  Ask anything (Cmd/Ctrl+Enter to send)
+                  {sendHint}
                 </div>
               }
             />

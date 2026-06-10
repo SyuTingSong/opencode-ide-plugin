@@ -8,26 +8,25 @@ interface GeneralTabProps {
 }
 
 function useEnterToSend() {
-  const [enabled, setEnabled] = useState(() => {
+  const [initial] = useState(() => {
     try {
-      return window.localStorage.getItem("opencode-enter-to-send") === "true"
+      const value = window.localStorage.getItem("opencode-enter-to-send")
+      return value === null ? true : value === "true"
     } catch {
-      return false
+      return true
     }
   })
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem("opencode-enter-to-send", String(enabled))
-    } catch {}
-  }, [enabled])
-
-  return [enabled, setEnabled] as const
+  const [enabled, setEnabled] = useState(initial)
+  return [enabled, setEnabled, initial] as const
 }
 
-export function GeneralTab({ formData, setFormData }: GeneralTabProps) {
+export function GeneralTab({ formData, setFormData, onExtraChange }: GeneralTabProps & { onExtraChange?: (hasChanged: boolean) => void }) {
   const { worktree } = useProject()
-  const [enterToSend, setEnterToSend] = useEnterToSend()
+  const [enterToSend, setEnterToSend, enterToSendInitial] = useEnterToSend()
+
+  useEffect(() => {
+    onExtraChange?.(enterToSend !== enterToSendInitial)
+  }, [enterToSend, enterToSendInitial, onExtraChange])
   return (
     <div className="space-y-4">
       <div>

@@ -59,11 +59,11 @@ export const KEYBOARD_SHORTCUTS: ShortcutDefinition[] = [
   // Messages
   {
     id: "send-message",
-    keys: ["Cmd/Ctrl", "Enter"],
+    keys: ["Enter"],
     description: "Send message",
     category: "Messages",
     handler: "onSendMessage",
-    modKey: true,
+    modKey: false,
     key: "Enter",
   },
 
