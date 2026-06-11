@@ -13,6 +13,9 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.concurrency.AppExecutorUtil
+import org.cef.browser.CefBrowser
+import org.cef.browser.CefFrame
+import org.cef.handler.CefLoadHandlerAdapter
 import com.intellij.util.ui.JBUI
 import paviko.opencode.backendprocess.BackendLauncher
 import paviko.opencode.backendprocess.BackendProcess
@@ -286,9 +289,19 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                                     append(URLEncoder.encode(session.token, StandardCharsets.UTF_8))
                                                 }
                                                 
+                                                browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
+                                                    override fun onLoadEnd(b: CefBrowser, frame: CefFrame?, httpStatusCode: Int) {
+                                                        if (frame?.isMain != true) return
+                                                        SwingUtilities.invokeLater {
+                                                            browser.component.requestFocusInWindow()
+                                                            try { browser.cefBrowser.setFocus(true) } catch (_: Throwable) {}
+                                                        }
+                                                    }
+                                                }, browser.cefBrowser)
+
                                                 // Load the URL with bridge params
                                                 browser.loadURL(urlWithBridge)
-                                                
+
                                                 // Register cleanup for the session
                                                 Disposer.register(toolWindow.disposable) {
                                                     IdeBridge.removeSession(session.sessionId)
