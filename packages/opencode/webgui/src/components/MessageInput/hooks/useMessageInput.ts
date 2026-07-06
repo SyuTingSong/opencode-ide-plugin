@@ -55,6 +55,8 @@ export function useMessageInput({
     try {
       const trimmedMessage = savedMessage.trim()
       const isCommand = trimmedMessage.startsWith("/")
+      const isShell = trimmedMessage.startsWith("!")
+      const shellCommand = isShell ? trimmedMessage.slice(1) : ""
       const commandParts = isCommand ? trimmedMessage.slice(1).split(/\s+/) : []
       const commandName = commandParts[0]
       const commandArgs = commandParts.slice(1).join(" ")
@@ -72,9 +74,9 @@ export function useMessageInput({
         })
       }
 
-      const parts = shouldRunCommand ? [] : extractMessageParts()
+      const parts = shouldRunCommand || isShell ? [] : extractMessageParts()
 
-      if (!shouldRunCommand && parts.length === 0) {
+      if (!shouldRunCommand && !isShell && parts.length === 0) {
         throw new Error("No message content")
       }
 
@@ -133,6 +135,34 @@ export function useMessageInput({
             "message" in response.error.data
               ? String(response.error.data.message)
               : "Failed to execute command"
+          throw new Error(errorMsg)
+        }
+      } else if (isShell) {
+        const requestBody: any = {
+          command: shellCommand,
+          agent: selectedAgent,
+        }
+
+        if (selectedProviderId && selectedModelId) {
+          requestBody.model = {
+            providerID: selectedProviderId,
+            modelID: selectedModelId,
+          }
+        }
+
+        const response = await sdk.session.shell({
+          path: { id: actualSessionID },
+          body: requestBody,
+        })
+
+        if (response.error) {
+          const errorMsg =
+            "data" in response.error &&
+            response.error.data &&
+            typeof response.error.data === "object" &&
+            "message" in response.error.data
+              ? String(response.error.data.message)
+              : "Failed to execute shell command"
           throw new Error(errorMsg)
         }
       } else {
