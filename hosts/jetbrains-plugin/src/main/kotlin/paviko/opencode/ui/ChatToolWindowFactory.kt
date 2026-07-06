@@ -251,11 +251,11 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                             appUrl
                                         }
 
-                                        SwingUtilities.invokeLater {
-                                            try {
-                                                statusLabel.text = "Server running on $port"
-                                                restartButton.isVisible = true
-                                                restartButton.isEnabled = true
+                                         SwingUtilities.invokeLater {
+                                             try {
+                                                 statusLabel.text = "Server running on $port"
+                                                 restartButton.isVisible = true
+                                                 restartButton.isEnabled = !proc.isExternal
 
                                                 val client = JBCefApp.getInstance().createClient()
                                                 
@@ -287,6 +287,10 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                                     append(URLEncoder.encode(session.baseUrl, StandardCharsets.UTF_8))
                                                     append("&ideBridgeToken=")
                                                     append(URLEncoder.encode(session.token, StandardCharsets.UTF_8))
+                                                    project.basePath?.let { basePath ->
+                                                        append("&directory=")
+                                                        append(URLEncoder.encode(basePath, StandardCharsets.UTF_8))
+                                                    }
                                                 }
                                                 
                                                 browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
