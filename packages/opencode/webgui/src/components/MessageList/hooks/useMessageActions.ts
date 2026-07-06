@@ -30,24 +30,14 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     }
   }, [forkConfirm, currentSession, forkSession])
 
-  const handleRevert = useCallback(
-    (messageId: string) => {
-      if (!currentSession?.id) return
-      if (isRevertBusy) return
-      setRevertAction({ type: "undo", messageId })
-    },
-    [currentSession, isRevertBusy],
-  )
-
-  const handleRevertConfirm = useCallback(async () => {
+  const executeRevert = useCallback(async (action: { type: "undo" | "redo" | "restore"; messageId?: string }) => {
     if (!currentSession?.id) return
-    if (!revertAction) return
     setIsRevertBusy(true)
-    if (revertAction.type === "undo" && revertAction.messageId) {
+    if (action.type === "undo" && action.messageId) {
       const sid = sessionID ?? currentSession.id
       if (sid) {
         const msgs = getMessagesBySession(sid)
-        const msg = msgs.find((m) => m.info.id === revertAction.messageId)
+        const msg = msgs.find((m) => m.info.id === action.messageId)
         if (msg) {
           if (onUndoToInput) {
             const plain = getUserMessagePlainText(msg)
@@ -56,19 +46,18 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
           removeSessionErrors(sid, msg.info.time.created)
         }
       }
-      await revertToMessage(currentSession.id, revertAction.messageId)
+      await revertToMessage(currentSession.id, action.messageId)
     }
-    if (revertAction.type === "redo") {
+    if (action.type === "redo") {
       await redoNext(currentSession.id)
     }
-    if (revertAction.type === "restore") {
+    if (action.type === "restore") {
       await unrevertSession(currentSession.id)
     }
     setIsRevertBusy(false)
     setRevertAction(null)
   }, [
     currentSession,
-    revertAction,
     sessionID,
     getMessagesBySession,
     removeSessionErrors,
@@ -78,6 +67,32 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
     unrevertSession,
   ])
 
+  const handleRevert = useCallback(
+    (messageId: string) => {
+      if (!currentSession?.id) return
+      if (isRevertBusy) return
+      const skip = (() => {
+        try {
+          return window.localStorage.getItem("opencode-skip-undo-confirm") === "true"
+        } catch {
+          return false
+        }
+      })()
+      const action = { type: "undo" as const, messageId }
+      if (skip) {
+        void executeRevert(action)
+        return
+      }
+      setRevertAction(action)
+    },
+    [currentSession, isRevertBusy, executeRevert],
+  )
+
+  const handleRevertConfirm = useCallback(async () => {
+    if (!revertAction) return
+    await executeRevert(revertAction)
+  }, [revertAction, executeRevert])
+
   const handleRevertCancel = useCallback(() => {
     if (isRevertBusy) return
     setRevertAction(null)
@@ -86,14 +101,38 @@ export function useMessageActions(sessionID: string | null | undefined, onUndoTo
   const handleRedoClick = useCallback(() => {
     if (!currentSession?.id) return
     if (isRevertBusy) return
-    setRevertAction({ type: "redo" })
-  }, [currentSession, isRevertBusy])
+    const skip = (() => {
+      try {
+        return window.localStorage.getItem("opencode-skip-undo-confirm") === "true"
+      } catch {
+        return false
+      }
+    })()
+    const action = { type: "redo" as const }
+    if (skip) {
+      void executeRevert(action)
+      return
+    }
+    setRevertAction(action)
+  }, [currentSession, isRevertBusy, executeRevert])
 
   const handleRestoreClick = useCallback(() => {
     if (!currentSession?.id) return
     if (isRevertBusy) return
-    setRevertAction({ type: "restore" })
-  }, [currentSession, isRevertBusy])
+    const skip = (() => {
+      try {
+        return window.localStorage.getItem("opencode-skip-undo-confirm") === "true"
+      } catch {
+        return false
+      }
+    })()
+    const action = { type: "restore" as const }
+    if (skip) {
+      void executeRevert(action)
+      return
+    }
+    setRevertAction(action)
+  }, [currentSession, isRevertBusy, executeRevert])
 
   return {
     forkConfirm,
