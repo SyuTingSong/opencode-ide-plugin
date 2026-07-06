@@ -33,7 +33,7 @@ export function useMessageInput({
   const [isSending, setIsSending] = useState(false)
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
   const { showToast } = useToast()
-  const { setIsIdle, isVirtualSession, materializeSession } = useSession()
+  const { setIsIdle, isVirtualSession, materializeSession, newVirtual } = useSession()
 
   // Reset isSending when session changes
   useEffect(() => {
@@ -54,6 +54,22 @@ export function useMessageInput({
 
     try {
       const trimmedMessage = savedMessage.trim()
+
+      if (trimmedMessage.toLowerCase() === "/new") {
+        editor.update(() => {
+          const root = $getRoot()
+          root.clear()
+          const paragraph = $createParagraphNode()
+          root.append(paragraph)
+        })
+        newVirtual()
+        setTimeout(() => {
+          editor.focus()
+        }, 0)
+        setIsSending(false)
+        return
+      }
+
       const isCommand = trimmedMessage.startsWith("/")
       const isShell = trimmedMessage.startsWith("!")
       const shellCommand = isShell ? trimmedMessage.slice(1) : ""
@@ -230,6 +246,7 @@ export function useMessageInput({
     showToast,
     isVirtualSession,
     materializeSession,
+    newVirtual,
     editor,
     extractMessageParts,
   ])
