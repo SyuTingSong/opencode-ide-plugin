@@ -13,6 +13,11 @@ import { IdeBridgeProvider } from "./state/IdeBridgeContext"
 import { ProvidersProvider } from "./state/ProvidersContext"
 import { initGlobalDnD } from "./lib/dnd"
 import { VersionGate } from "./components/VersionGate"
+import { setServerDirectory } from "./lib/api/sdkClient"
+
+// IDE plugins pass the project directory so sessions bind to the current project, not the server's cwd.
+const directory = new URLSearchParams(window.location.search).get("directory")
+if (directory) setServerDirectory(directory)
 
 window.addEventListener(
   "opencode:ui-bridge-state",
