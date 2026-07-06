@@ -23,12 +23,19 @@ import com.intellij.util.Alarm
 import org.jetbrains.plugins.terminal.ShellTerminalWidget
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import paviko.opencode.settings.OpenCodeSettings
+import java.net.HttpURLConnection
+import java.net.URI
+import java.net.URL
 import java.io.PipedOutputStream
 import javax.swing.JComponent
 import javax.swing.SwingUtilities
 
 object BackendLauncher {
     private val logger = Logger.getInstance(BackendLauncher::class.java)
+    private const val DEFAULT_OPENCODE_PORT = 4096
+    private const val LOCAL_OPENCODE_BASE_URL = "http://127.0.0.1:$DEFAULT_OPENCODE_PORT"
+    private const val GLOBAL_HEALTH_URL = "$LOCAL_OPENCODE_BASE_URL/global/health"
+    private const val PROBE_TIMEOUT_MS = 2_000
 
     /**
      * Launches the backend process.
@@ -37,6 +44,14 @@ object BackendLauncher {
         require(!ApplicationManager.getApplication().isDispatchThread) {
             "launchBackend must not be called from EDT - it performs heavy I/O operations"
         }
+
+        if (probeExistingServer()) {
+            logger.info("Found existing opencode server on port 4096, reusing")
+            return ExistingServerBackendProcess(LOCAL_OPENCODE_BASE_URL)
+        }
+
+        logger.info("No existing opencode server on port 4096, starting new process")
+
         val isWin = System.getProperty("os.name").lowercase().contains("win")
         val bin = findBundledBinary(if (isWin) "opencode.exe" else "opencode") ?: "opencode" // fallback to PATH
 
@@ -59,6 +74,23 @@ object BackendLauncher {
         
         // Return a TerminalBackendProcess (async wrapper) that handles terminal waiting internally
         return TerminalBackendProcess(project, args, baseDir, customCommand)
+    }
+
+    private fun probeExistingServer(): Boolean {
+        return runCatching {
+            val connection = URI(GLOBAL_HEALTH_URL).toURL().openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = PROBE_TIMEOUT_MS
+            connection.readTimeout = PROBE_TIMEOUT_MS
+            connection.instanceFollowRedirects = false
+            connection.useCaches = false
+
+            try {
+                connection.responseCode in 200..299
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrElse { false }
     }
     
     internal fun launchBackendWithTerminalCheck(
