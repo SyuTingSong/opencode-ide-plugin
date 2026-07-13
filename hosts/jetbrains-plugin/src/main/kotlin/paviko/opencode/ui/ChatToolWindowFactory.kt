@@ -90,16 +90,25 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         val hideableLogs = com.intellij.ui.HideableTitledPanel("Backend logs (merged stdout/stderr)", false)
         hideableLogs.setContentComponent(logsPanel)
 
-        // Toolbar panel with status and restart button
+        // Toolbar panel with status and action buttons
         val statusLabel = JLabel("Starting backend...")
         val restartButton = JButton("Restart Server").apply {
             isVisible = false
             isFocusable = false
         }
+        val reloadButton = JButton("Reload WebUI").apply {
+            isVisible = false
+            isFocusable = false
+            toolTipText = "Reload the OpenCode WebUI in the embedded browser"
+        }
+        val buttonPanel = JPanel().apply {
+            add(restartButton)
+            add(reloadButton)
+        }
         val toolbarPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(4)
             add(statusLabel, BorderLayout.WEST)
-            add(restartButton, BorderLayout.EAST)
+            add(buttonPanel, BorderLayout.EAST)
         }
 
         // Placeholder center until browser loads
@@ -118,6 +127,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         val logFlushScheduled = AtomicBoolean(false)
         val timeoutFutureRef = AtomicReference<java.util.concurrent.ScheduledFuture<*>?>(null)
         var currentLogThread: Thread? = null
+        var currentBrowser: JBCefBrowser? = null
         var watchdogThread: Thread? = null
 
         fun scheduleLogFlush() {
@@ -161,6 +171,8 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                 statusLabel.text = "Starting backend..."
                 restartButton.isVisible = false
                 restartButton.isEnabled = false
+                reloadButton.isVisible = false
+                reloadButton.isEnabled = false
                 mainPanel.removeAll()
                 mainPanel.add(toolbarPanel, BorderLayout.NORTH)
                 mainPanel.add(JPanel(BorderLayout()).apply {
@@ -277,6 +289,10 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                                 mainPanel.revalidate()
                                                 mainPanel.repaint()
 
+                                                currentBrowser = browser
+                                                reloadButton.isVisible = true
+                                                reloadButton.isEnabled = true
+
                                                 // Create bridge session and build URL with bridge params
                                                 val session = IdeBridge.createSession(project, isGuiOnly)
                                                 val baseUrl = withCacheBuster(uiBaseUrl, pluginVersion())
@@ -297,6 +313,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                                     override fun onLoadEnd(b: CefBrowser, frame: CefFrame?, httpStatusCode: Int) {
                                                         if (frame?.isMain != true) return
                                                         SwingUtilities.invokeLater {
+                                                            statusLabel.text = "Server running on $port"
                                                             browser.component.requestFocusInWindow()
                                                             try { browser.cefBrowser.setFocus(true) } catch (_: Throwable) {}
                                                         }
@@ -323,6 +340,9 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
                                                 statusLabel.text = "Browser error"
                                                 restartButton.isVisible = true
                                                 restartButton.isEnabled = true
+                                                currentBrowser = null
+                                                reloadButton.isVisible = false
+                                                reloadButton.isEnabled = false
                                                 showError(mainPanel, hideableLogs, "Failed to create browser:<br/>${e.message}", toolbarPanel)
                                             }
                                         }
@@ -381,6 +401,7 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             try { staticServerBaseRef.get()?.let { WebguiStaticServer.stop(it) } } catch (_: Throwable) {}
             watchdogThread?.interrupt()
             currentLogThread?.interrupt()
+            currentBrowser = null
         }
 
         restartButton.addActionListener {
@@ -392,6 +413,16 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             watchdogThread?.interrupt()
             currentLogThread?.interrupt()
             startBackend()
+        }
+
+        reloadButton.addActionListener {
+            val browser = currentBrowser
+            if (browser != null) {
+                SwingUtilities.invokeLater {
+                    statusLabel.text = "Reloading WebUI..."
+                    browser.cefBrowser.reload()
+                }
+            }
         }
 
         startBackend()
