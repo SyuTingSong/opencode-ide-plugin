@@ -13,8 +13,12 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.concurrency.AppExecutorUtil
+import org.cef.browser.CefBrowser
+import org.cef.browser.CefFrame
+import org.cef.handler.CefLoadHandlerAdapter
 import com.intellij.util.ui.JBUI
 import paviko.opencode.backendprocess.BackendLauncher
+import paviko.opencode.backendprocess.BackendProcess
 import java.awt.BorderLayout
 import java.awt.Font
 import java.io.BufferedReader
@@ -33,8 +37,11 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
     private val logger = Logger.getInstance(ChatToolWindowFactory::class.java)
     private val maxLogChars = 200_000
 
-    private fun showError(mainPanel: JPanel, hideableLogs: JComponent, message: String) {
+    private fun showError(mainPanel: JPanel, hideableLogs: JComponent, message: String, toolbarPanel: JComponent? = null) {
         mainPanel.removeAll()
+        if (toolbarPanel != null) {
+            mainPanel.add(toolbarPanel, BorderLayout.NORTH)
+        }
         mainPanel.add(JPanel(BorderLayout()).apply {
             add(JLabel("<html><center>$message</center></html>"), BorderLayout.CENTER)
         }, BorderLayout.CENTER)
@@ -83,19 +90,45 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
         val hideableLogs = com.intellij.ui.HideableTitledPanel("Backend logs (merged stdout/stderr)", false)
         hideableLogs.setContentComponent(logsPanel)
 
+        // Toolbar panel with status and action buttons
+        val statusLabel = JLabel("Starting backend...")
+        val restartButton = JButton("Restart Server").apply {
+            isVisible = false
+            isFocusable = false
+        }
+        val reloadButton = JButton("Reload WebUI").apply {
+            isVisible = false
+            isFocusable = false
+            toolTipText = "Reload the OpenCode WebUI in the embedded browser"
+        }
+        val buttonPanel = JPanel().apply {
+            add(restartButton)
+            add(reloadButton)
+        }
+        val toolbarPanel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(4)
+            add(statusLabel, BorderLayout.WEST)
+            add(buttonPanel, BorderLayout.EAST)
+        }
+
         // Placeholder center until browser loads
+        mainPanel.add(toolbarPanel, BorderLayout.NORTH)
         mainPanel.add(JPanel(BorderLayout()).apply {
             add(JLabel("Starting backend..."), BorderLayout.CENTER)
         }, BorderLayout.CENTER)
         // Add collapsible logs at the bottom
         mainPanel.add(hideableLogs, BorderLayout.SOUTH)
 
-        val procRef = AtomicReference<paviko.opencode.backendprocess.BackendProcess?>(null)
+        val procRef = AtomicReference<BackendProcess?>(null)
         val staticServerBaseRef = AtomicReference<String?>(null)
         val connected = AtomicBoolean(false)
         val logLock = Any()
         val logBuffer = StringBuilder()
         val logFlushScheduled = AtomicBoolean(false)
+        val timeoutFutureRef = AtomicReference<java.util.concurrent.ScheduledFuture<*>?>(null)
+        var currentLogThread: Thread? = null
+        var currentBrowser: JBCefBrowser? = null
+        var watchdogThread: Thread? = null
 
         fun scheduleLogFlush() {
             if (!logFlushScheduled.compareAndSet(false, true)) return
@@ -127,148 +160,272 @@ class ChatToolWindowFactory : ToolWindowFactory, DumbAware {
             scheduleLogFlush()
         }
 
-        val timeoutMs = 300_000L
-        val timeoutFuture = AppExecutorUtil.getAppScheduledExecutorService().schedule({
-            if (connected.get()) return@schedule
-            logger.warn("Backend connection timeout after ${timeoutMs}ms")
+        fun startBackend() {
+            connected.set(false)
+            connectionInfo = null
+            synchronized(logLock) { logBuffer.setLength(0) }
+            logArea.text = ""
+            timeoutFutureRef.getAndSet(null)?.cancel(false)
+
             SwingUtilities.invokeLater {
-                showError(mainPanel, hideableLogs, "Backend connection timeout.<br/>Check logs for details.")
+                statusLabel.text = "Starting backend..."
+                restartButton.isVisible = false
+                restartButton.isEnabled = false
+                reloadButton.isVisible = false
+                reloadButton.isEnabled = false
+                mainPanel.removeAll()
+                mainPanel.add(toolbarPanel, BorderLayout.NORTH)
+                mainPanel.add(JPanel(BorderLayout()).apply {
+                    add(JLabel("Starting backend..."), BorderLayout.CENTER)
+                }, BorderLayout.CENTER)
+                mainPanel.add(hideableLogs, BorderLayout.SOUTH)
+                mainPanel.revalidate()
+                mainPanel.repaint()
             }
-            try { procRef.get()?.destroy() } catch (_: Throwable) {}
-            try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
-        }, timeoutMs, TimeUnit.MILLISECONDS)
 
-        Disposer.register(toolWindow.disposable) {
-            timeoutFuture.cancel(false)
-            try { procRef.get()?.destroy() } catch (_: Throwable) {}
-            try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
-            try { staticServerBaseRef.get()?.let { WebguiStaticServer.stop(it) } } catch (_: Throwable) {}
-        }
-
-        AppExecutorUtil.getAppExecutorService().execute {
-            val proc = try {
-                BackendLauncher.launchBackend(project)
-            } catch (e: Exception) {
-                logger.error("Failed to launch backend", e)
+            val timeoutMs = 300_000L
+            val timeoutFuture = AppExecutorUtil.getAppScheduledExecutorService().schedule({
+                if (connected.get()) return@schedule
+                logger.warn("Backend connection timeout after ${timeoutMs}ms")
                 SwingUtilities.invokeLater {
-                    showError(mainPanel, hideableLogs, "Failed to start backend:<br/>${e.message}<br/><br/>Check logs for details.")
+                    statusLabel.text = "Connection timeout"
+                    restartButton.isVisible = true
+                    restartButton.isEnabled = true
+                    showError(mainPanel, hideableLogs, "Backend connection timeout.<br/>Check logs for details.", toolbarPanel)
                 }
-                timeoutFuture.cancel(false)
-                return@execute
-            }
-            procRef.set(proc)
+                try { procRef.get()?.destroy() } catch (_: Throwable) {}
+                try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
+            }, timeoutMs, TimeUnit.MILLISECONDS)
+            timeoutFutureRef.set(timeoutFuture)
 
-            val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
-            val logThread = Thread {
-                try {
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        val l = line!!.trim()
-                        queueLog(l)
+            AppExecutorUtil.getAppExecutorService().execute {
+                val proc = try {
+                    BackendLauncher.launchBackend(project)
+                } catch (e: Exception) {
+                    logger.error("Failed to launch backend", e)
+                    SwingUtilities.invokeLater {
+                        statusLabel.text = "Failed to start"
+                        restartButton.isVisible = true
+                        restartButton.isEnabled = true
+                        showError(mainPanel, hideableLogs, "Failed to start backend:<br/>${e.message}<br/><br/>Check logs for details.", toolbarPanel)
+                    }
+                    timeoutFuture.cancel(false)
+                    return@execute
+                }
+                procRef.set(proc)
 
-                        if (!connected.get()) {
-                            val serverMatch = Regex("opencode server listening on (https?://\\S+)", RegexOption.IGNORE_CASE).find(l)
-                            if (serverMatch != null) {
-                                val serverUrlRaw = serverMatch.groupValues[1]
-                                try {
-                                    val serverUri = URI(serverUrlRaw)
-                                    val port = if (serverUri.port != -1) serverUri.port else when (serverUri.scheme?.lowercase()) {
-                                        "https" -> 443
-                                        else -> 80
-                                    }
-                                    val baseUrl = serverUri.toString().trimEnd('/')
-                                    val appUrl = "$baseUrl/app"
+                fun onBackendStopped() {
+                    if (procRef.get() != proc) return
+                    SwingUtilities.invokeLater {
+                        statusLabel.text = "Server stopped"
+                        restartButton.isVisible = true
+                        restartButton.isEnabled = true
+                    }
+                }
 
-                                    proc.stopCapture()
-                                    connectionInfo = ConnInfo(port, appUrl)
-                                    connected.set(true)
-                                    timeoutFuture.cancel(false)
-                                    logger.info("Backend connection established at $appUrl")
+                val reader = BufferedReader(InputStreamReader(proc.inputStream, StandardCharsets.UTF_8))
+                val logThread = Thread {
+                    try {
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            val l = line!!.trim()
+                            queueLog(l)
 
-                                    // Detect gui-only mode: check if webgui-app is bundled as a resource
-                                    val isGuiOnly = javaClass.classLoader.getResource("webgui-app/index.html") != null
-                                    val uiBaseUrl = if (isGuiOnly) {
-                                        val webguiDir = extractWebguiResources()
-                                        val serverRoot = serverUri.let { "${it.scheme}://${it.host}:${it.port}" }
-                                        logger.info("gui-only mode: serving embedded webgui, REST API at $serverRoot")
-                                        val base = WebguiStaticServer.start(webguiDir, serverRoot)
-                                        staticServerBaseRef.set(base)
-                                        "$base/app"
-                                    } else {
-                                        appUrl
-                                    }
-
-                                    SwingUtilities.invokeLater {
-                                        try {
-                                            val client = JBCefApp.getInstance().createClient()
-                                            
-                                            // Create browser WITHOUT URL first
-                                            val browser = JBCefBrowser.createBuilder()
-                                                .setClient(client)
-                                                .build()
-
-                                            try {
-                                                DragAndDropInstaller.install(project, browser, logger)
-                                            } catch (e: Exception) {
-                                                logger.warn("Failed to set up drag and drop", e)
-                                            }
-
-                                            mainPanel.removeAll()
-                                            mainPanel.add(browser.component, BorderLayout.CENTER)
-                                            mainPanel.add(hideableLogs, BorderLayout.SOUTH)
-                                            mainPanel.revalidate()
-                                            mainPanel.repaint()
-
-                                            // Create bridge session and build URL with bridge params
-                                            val session = IdeBridge.createSession(project, isGuiOnly)
-                                            val baseUrl = withCacheBuster(uiBaseUrl, pluginVersion())
-                                            val urlWithBridge = buildString {
-                                                append(baseUrl)
-                                                append(if ('?' in baseUrl) '&' else '?')
-                                                append("ideBridge=")
-                                                append(URLEncoder.encode(session.baseUrl, StandardCharsets.UTF_8))
-                                                append("&ideBridgeToken=")
-                                                append(URLEncoder.encode(session.token, StandardCharsets.UTF_8))
-                                            }
-                                            
-                                            // Load the URL with bridge params
-                                            browser.loadURL(urlWithBridge)
-                                            
-                                            // Register cleanup for the session
-                                            Disposer.register(toolWindow.disposable) {
-                                                IdeBridge.removeSession(session.sessionId)
-                                            }
-                                            
-                                            try {
-                                                val filesUpdater = IdeOpenFilesUpdater(project, browser, session.sessionId)
-                                                filesUpdater.install()
-                                                Disposer.register(browser, filesUpdater)
-                                            } catch (e: Exception) {
-                                                logger.warn("Failed to install IdeOpenFilesUpdater", e)
-                                            }
-                                        } catch (e: Exception) {
-                                            logger.error("Failed to create browser component", e)
-                                            showError(mainPanel, hideableLogs, "Failed to create browser:<br/>${e.message}")
+                            if (!connected.get()) {
+                                val serverMatch = Regex("opencode server listening on (https?://\\S+)", RegexOption.IGNORE_CASE).find(l)
+                                if (serverMatch != null) {
+                                    val serverUrlRaw = serverMatch.groupValues[1]
+                                    try {
+                                        val serverUri = URI(serverUrlRaw)
+                                        val port = if (serverUri.port != -1) serverUri.port else when (serverUri.scheme?.lowercase()) {
+                                            "https" -> 443
+                                            else -> 80
                                         }
+                                        val baseUrl = serverUri.toString().trimEnd('/')
+                                        val appUrl = "$baseUrl/app"
+
+                                        proc.stopCapture()
+                                        connectionInfo = ConnInfo(port, appUrl)
+                                        connected.set(true)
+                                        timeoutFuture.cancel(false)
+                                        logger.info("Backend connection established at $appUrl")
+
+                                        // Detect gui-only mode: check if webgui-app is bundled as a resource
+                                        val isGuiOnly = javaClass.classLoader.getResource("webgui-app/index.html") != null
+                                        val uiBaseUrl = if (isGuiOnly) {
+                                            val webguiDir = extractWebguiResources()
+                                            val serverRoot = serverUri.let { "${it.scheme}://${it.host}:${it.port}" }
+                                            logger.info("gui-only mode: serving embedded webgui, REST API at $serverRoot")
+                                            val base = WebguiStaticServer.start(webguiDir, serverRoot)
+                                            staticServerBaseRef.set(base)
+                                            "$base/app"
+                                        } else {
+                                            appUrl
+                                        }
+
+                                         SwingUtilities.invokeLater {
+                                             try {
+                                                 statusLabel.text = "Server running on $port"
+                                                 restartButton.isVisible = true
+                                                 restartButton.isEnabled = !proc.isExternal
+
+                                                val client = JBCefApp.getInstance().createClient()
+                                                
+                                                // Create browser WITHOUT URL first
+                                                val browser = JBCefBrowser.createBuilder()
+                                                    .setClient(client)
+                                                    .build()
+
+                                                try {
+                                                    DragAndDropInstaller.install(project, browser, logger)
+                                                } catch (e: Exception) {
+                                                    logger.warn("Failed to set up drag and drop", e)
+                                                }
+
+                                                mainPanel.removeAll()
+                                                mainPanel.add(toolbarPanel, BorderLayout.NORTH)
+                                                mainPanel.add(browser.component, BorderLayout.CENTER)
+                                                mainPanel.add(hideableLogs, BorderLayout.SOUTH)
+                                                mainPanel.revalidate()
+                                                mainPanel.repaint()
+
+                                                currentBrowser = browser
+                                                reloadButton.isVisible = true
+                                                reloadButton.isEnabled = true
+
+                                                // Create bridge session and build URL with bridge params
+                                                val session = IdeBridge.createSession(project, isGuiOnly)
+                                                val baseUrl = withCacheBuster(uiBaseUrl, pluginVersion())
+                                                val urlWithBridge = buildString {
+                                                    append(baseUrl)
+                                                    append(if ('?' in baseUrl) '&' else '?')
+                                                    append("ideBridge=")
+                                                    append(URLEncoder.encode(session.baseUrl, StandardCharsets.UTF_8))
+                                                    append("&ideBridgeToken=")
+                                                    append(URLEncoder.encode(session.token, StandardCharsets.UTF_8))
+                                                    project.basePath?.let { basePath ->
+                                                        append("&directory=")
+                                                        append(URLEncoder.encode(basePath, StandardCharsets.UTF_8))
+                                                    }
+                                                }
+                                                
+                                                browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
+                                                    override fun onLoadEnd(b: CefBrowser, frame: CefFrame?, httpStatusCode: Int) {
+                                                        if (frame?.isMain != true) return
+                                                        SwingUtilities.invokeLater {
+                                                            statusLabel.text = "Server running on $port"
+                                                            browser.component.requestFocusInWindow()
+                                                            try { browser.cefBrowser.setFocus(true) } catch (_: Throwable) {}
+                                                        }
+                                                    }
+                                                }, browser.cefBrowser)
+
+                                                // Load the URL with bridge params
+                                                browser.loadURL(urlWithBridge)
+
+                                                // Register cleanup for the session
+                                                Disposer.register(toolWindow.disposable) {
+                                                    IdeBridge.removeSession(session.sessionId)
+                                                }
+                                                
+                                                try {
+                                                    val filesUpdater = IdeOpenFilesUpdater(project, browser, session.sessionId)
+                                                    filesUpdater.install()
+                                                    Disposer.register(browser, filesUpdater)
+                                                } catch (e: Exception) {
+                                                    logger.warn("Failed to install IdeOpenFilesUpdater", e)
+                                                }
+                                            } catch (e: Exception) {
+                                                logger.error("Failed to create browser component", e)
+                                                statusLabel.text = "Browser error"
+                                                restartButton.isVisible = true
+                                                restartButton.isEnabled = true
+                                                currentBrowser = null
+                                                reloadButton.isVisible = false
+                                                reloadButton.isEnabled = false
+                                                showError(mainPanel, hideableLogs, "Failed to create browser:<br/>${e.message}", toolbarPanel)
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        logger.warn("Failed to set up browser for backend connection", e)
                                     }
-                                } catch (e: Exception) {
-                                    logger.warn("Failed to set up browser for backend connection", e)
                                 }
                             }
                         }
+                    } catch (e: Exception) {
+                        logger.error("Error reading backend output", e)
+                        SwingUtilities.invokeLater {
+                            statusLabel.text = "Backend error"
+                            restartButton.isVisible = true
+                            restartButton.isEnabled = true
+                            showError(mainPanel, hideableLogs, "Backend communication error:<br/>${e.message}", toolbarPanel)
+                        }
+                    } finally {
+                        try { reader.close() } catch (_: Throwable) {}
+                        if (!proc.isAlive()) {
+                            onBackendStopped()
+                        }
                     }
-                } catch (e: Exception) {
-                    logger.error("Error reading backend output", e)
-                    SwingUtilities.invokeLater {
-                        showError(mainPanel, hideableLogs, "Backend communication error:<br/>${e.message}")
+                }
+                logThread.isDaemon = true
+                logThread.start()
+                currentLogThread = logThread
+
+                val watchdog = Thread {
+                    while (!Thread.currentThread().isInterrupted) {
+                        try {
+                            Thread.sleep(5000)
+                            if (procRef.get() != proc) break
+                            if (!proc.isAlive()) {
+                                logger.warn("Watchdog detected backend process is no longer alive")
+                                try { proc.stopCapture() } catch (_: Throwable) {}
+                                try { proc.inputStream.close() } catch (_: Throwable) {}
+                                onBackendStopped()
+                                break
+                            }
+                        } catch (e: InterruptedException) {
+                            break
+                        }
                     }
-                } finally {
-                    try { reader.close() } catch (_: Throwable) {}
+                }
+                watchdog.isDaemon = true
+                watchdog.start()
+                watchdogThread = watchdog
+            }
+        }
+
+        Disposer.register(toolWindow.disposable) {
+            timeoutFutureRef.get()?.cancel(false)
+            try { procRef.get()?.destroy() } catch (_: Throwable) {}
+            try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
+            try { staticServerBaseRef.get()?.let { WebguiStaticServer.stop(it) } } catch (_: Throwable) {}
+            watchdogThread?.interrupt()
+            currentLogThread?.interrupt()
+            currentBrowser = null
+        }
+
+        restartButton.addActionListener {
+            restartButton.isEnabled = false
+            statusLabel.text = "Restarting backend..."
+            try { procRef.get()?.destroy() } catch (_: Throwable) {}
+            try { procRef.get()?.inputStream?.close() } catch (_: Throwable) {}
+            try { staticServerBaseRef.get()?.let { WebguiStaticServer.stop(it) } } catch (_: Throwable) {}
+            watchdogThread?.interrupt()
+            currentLogThread?.interrupt()
+            startBackend()
+        }
+
+        reloadButton.addActionListener {
+            val browser = currentBrowser
+            if (browser != null) {
+                SwingUtilities.invokeLater {
+                    statusLabel.text = "Reloading WebUI..."
+                    browser.cefBrowser.reload()
                 }
             }
-            logThread.isDaemon = true
-            logThread.start()
         }
+
+        startBackend()
     }
 
     /**

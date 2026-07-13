@@ -1,9 +1,8 @@
 package paviko.opencode.ui
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.openapi.wm.ToolWindowManager
 import javax.swing.SwingUtilities
 
 /**
@@ -11,13 +10,13 @@ import javax.swing.SwingUtilities
  */
 object PathInserter {
     private val logger = Logger.getInstance(PathInserter::class.java)
-    private val mapper = jacksonObjectMapper()
 
     fun insertPaths(project: Project, paths: List<String>) {
         try {
             if (paths.isEmpty()) return
             
             IdeBridge.send(project, "insertPaths", mapOf("paths" to paths))
+            activateToolWindow(project)
         } catch (e: Exception) {
             logger.error("Unexpected error inserting paths", e)
         }
@@ -28,8 +27,19 @@ object PathInserter {
             if (path.isEmpty()) return
             
             IdeBridge.send(project, "pastePath", mapOf("path" to path))
+            activateToolWindow(project)
         } catch (e: Exception) {
             logger.error("Unexpected error pasting path", e)
+        }
+    }
+
+    private fun activateToolWindow(project: Project) {
+        SwingUtilities.invokeLater {
+            try {
+                val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("OpenCode")
+                toolWindow?.show(null)
+                toolWindow?.activate(null, true)
+            } catch (_: Throwable) {}
         }
     }
 }

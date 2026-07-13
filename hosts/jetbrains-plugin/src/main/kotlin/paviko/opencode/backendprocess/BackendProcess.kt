@@ -9,6 +9,7 @@ import java.io.InputStream
  */
 interface BackendProcess {
     val inputStream: InputStream
+    val isExternal: Boolean
     fun waitFor(): Int
     fun destroy()
     fun isAlive(): Boolean

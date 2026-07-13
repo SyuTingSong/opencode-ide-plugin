@@ -33,7 +33,7 @@ export function useMessageInput({
   const [isSending, setIsSending] = useState(false)
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
   const { showToast } = useToast()
-  const { setIsIdle, isVirtualSession, materializeSession } = useSession()
+  const { setIsIdle, isVirtualSession, materializeSession, newVirtual } = useSession()
 
   // Reset isSending when session changes
   useEffect(() => {
@@ -54,7 +54,25 @@ export function useMessageInput({
 
     try {
       const trimmedMessage = savedMessage.trim()
+
+      if (trimmedMessage.toLowerCase() === "/new") {
+        editor.update(() => {
+          const root = $getRoot()
+          root.clear()
+          const paragraph = $createParagraphNode()
+          root.append(paragraph)
+        })
+        newVirtual()
+        setTimeout(() => {
+          editor.focus()
+        }, 0)
+        setIsSending(false)
+        return
+      }
+
       const isCommand = trimmedMessage.startsWith("/")
+      const isShell = trimmedMessage.startsWith("!")
+      const shellCommand = isShell ? trimmedMessage.slice(1) : ""
       const commandParts = isCommand ? trimmedMessage.slice(1).split(/\s+/) : []
       const commandName = commandParts[0]
       const commandArgs = commandParts.slice(1).join(" ")
@@ -72,9 +90,9 @@ export function useMessageInput({
         })
       }
 
-      const parts = shouldRunCommand ? [] : extractMessageParts()
+      const parts = shouldRunCommand || isShell ? [] : extractMessageParts()
 
-      if (!shouldRunCommand && parts.length === 0) {
+      if (!shouldRunCommand && !isShell && parts.length === 0) {
         throw new Error("No message content")
       }
 
@@ -133,6 +151,34 @@ export function useMessageInput({
             "message" in response.error.data
               ? String(response.error.data.message)
               : "Failed to execute command"
+          throw new Error(errorMsg)
+        }
+      } else if (isShell) {
+        const requestBody: any = {
+          command: shellCommand,
+          agent: selectedAgent,
+        }
+
+        if (selectedProviderId && selectedModelId) {
+          requestBody.model = {
+            providerID: selectedProviderId,
+            modelID: selectedModelId,
+          }
+        }
+
+        const response = await sdk.session.shell({
+          path: { id: actualSessionID },
+          body: requestBody,
+        })
+
+        if (response.error) {
+          const errorMsg =
+            "data" in response.error &&
+            response.error.data &&
+            typeof response.error.data === "object" &&
+            "message" in response.error.data
+              ? String(response.error.data.message)
+              : "Failed to execute shell command"
           throw new Error(errorMsg)
         }
       } else {
@@ -200,6 +246,7 @@ export function useMessageInput({
     showToast,
     isVirtualSession,
     materializeSession,
+    newVirtual,
     editor,
     extractMessageParts,
   ])

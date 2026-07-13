@@ -455,6 +455,13 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     if (text.startsWith("/")) {
       const [cmdName, ...args] = text.split(" ")
       const commandName = cmdName.slice(1)
+      
+      if (commandName === "new") {
+        clearInput()
+        navigate(`/${params.dir}/session`)
+        return
+      }
+      
       const customCommand = sync.data.command.find((c) => c.name === commandName)
       if (customCommand) {
         clearInput()

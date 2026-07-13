@@ -6,6 +6,8 @@ import { ResourceExtractor } from "./ResourceExtractor"
 import { ErrorCategory, errorHandler, ErrorSeverity } from "../utils/ErrorHandler"
 import { logger } from "../globals"
 
+const DEFAULT_OPENCODE_PORT = 4096
+
 /**
  * Backend process management - mirrors BackendLauncher.kt
  * Handles opencode backend process lifecycle, binary extraction, and connection management
@@ -14,12 +16,13 @@ import { logger } from "../globals"
 export interface BackendConnection {
   port: number
   uiBase: string
-  process: ChildProcess
+  process?: ChildProcess
 }
 
 export class BackendLauncher {
   private currentProcess?: ChildProcess
   private currentConnection?: Omit<BackendConnection, "process">
+  private isExternalConnection = false
   private extensionPath?: string
 
   constructor(extensionPath?: string) {
@@ -33,8 +36,24 @@ export class BackendLauncher {
    */
   async launchBackend(workspaceRoot?: string, options?: { forceNew?: boolean }): Promise<BackendConnection> {
     // Reuse existing running backend if available
-    if (!options?.forceNew && this.currentProcess && this.currentConnection && this.isRunning()) {
-      return { ...this.currentConnection, process: this.currentProcess } as BackendConnection
+    if (!options?.forceNew && this.currentConnection && this.isRunning()) {
+      if (this.currentProcess) {
+        return { ...this.currentConnection, process: this.currentProcess }
+      }
+      return { ...this.currentConnection }
+    }
+
+    if (!options?.forceNew) {
+      logger.appendLine(`Probing for existing opencode server on port ${DEFAULT_OPENCODE_PORT}...`)
+      const existingServer = await this.probeExistingServer()
+      if (existingServer.ok) {
+        logger.appendLine(`Found existing opencode server on port ${DEFAULT_OPENCODE_PORT}`)
+        this.currentProcess = undefined
+        this.currentConnection = { port: existingServer.port, uiBase: existingServer.uiBase }
+        this.isExternalConnection = true
+        return { ...this.currentConnection }
+      }
+      logger.appendLine(`No existing opencode server on port ${DEFAULT_OPENCODE_PORT}, starting new process`)
     }
 
     try {
@@ -65,6 +84,7 @@ export class BackendLauncher {
       logger.appendLine(`Starting backend process: ${args.join(" ")}`)
       const childProcess = this.spawnBackend(args, cwd)
 
+      this.isExternalConnection = false
       this.currentProcess = childProcess
 
       // Parse connection info from stdout
@@ -133,6 +153,7 @@ export class BackendLauncher {
 
       const childProcess = this.spawnBackend(args, cwd)
 
+      this.isExternalConnection = false
       this.currentProcess = childProcess
 
       const connection = await this.parseConnectionInfo(childProcess)
@@ -294,6 +315,24 @@ export class BackendLauncher {
     })
   }
 
+  private async probeExistingServer(): Promise<{ ok: true; port: number; uiBase: string } | { ok: false }> {
+    try {
+      const response = await fetch(`http://127.0.0.1:${DEFAULT_OPENCODE_PORT}/global/health`, {
+        signal: AbortSignal.timeout(2000),
+      })
+      if (!response.ok) {
+        return { ok: false }
+      }
+      return {
+        ok: true,
+        port: DEFAULT_OPENCODE_PORT,
+        uiBase: `http://127.0.0.1:${DEFAULT_OPENCODE_PORT}/app`,
+      }
+    } catch {
+      return { ok: false }
+    }
+  }
+
   private shouldUseWindowsShell(command: string): boolean {
     if (process.platform !== "win32") {
       return false
@@ -428,6 +467,7 @@ export class BackendLauncher {
       if (this.currentProcess === process) {
         this.currentProcess = undefined
         this.currentConnection = undefined
+        this.isExternalConnection = false
       }
     })
 
@@ -478,20 +518,23 @@ export class BackendLauncher {
     if (this.currentProcess) {
       logger.appendLine("Terminating backend process...")
 
+      const processRef = this.currentProcess
+
       // Try graceful shutdown first
-      this.currentProcess.kill("SIGTERM")
+      processRef.kill("SIGTERM")
 
       // Force kill after timeout
       setTimeout(() => {
-        if (this.currentProcess && !this.currentProcess.killed) {
+        if (!processRef.killed) {
           logger.appendLine("Force killing backend process...")
-          this.currentProcess.kill("SIGKILL")
+          processRef.kill("SIGKILL")
         }
       }, 5000)
-
-      this.currentProcess = undefined
-      this.currentConnection = undefined
     }
+
+    this.currentProcess = undefined
+    this.currentConnection = undefined
+    this.isExternalConnection = false
   }
 
   /**
@@ -499,6 +542,9 @@ export class BackendLauncher {
    * @returns True if backend process is active
    */
   isRunning(): boolean {
+    if (this.isExternalConnection) {
+      return this.currentConnection !== undefined
+    }
     return this.currentProcess !== undefined && !this.currentProcess.killed
   }
 }

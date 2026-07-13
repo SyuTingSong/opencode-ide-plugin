@@ -17,6 +17,7 @@ internal class RunningTerminalBackendProcess(
 
     private val logger = Logger.getInstance(RunningTerminalBackendProcess::class.java)
     private val outputCapture = TerminalOutputCapture(outputBuffer)
+    override val isExternal = false
 
     init {
         // Start capturing output from the terminal

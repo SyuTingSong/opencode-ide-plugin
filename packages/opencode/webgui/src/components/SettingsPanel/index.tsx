@@ -43,10 +43,13 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     error,
   } = useSettingsForm(isOpen, customApi)
 
+  const [hasExtraChanges, setHasExtraChanges] = useState(false)
+
   const { hasUnsavedChanges, showCloseConfirm, setShowCloseConfirm } = useUnsavedChanges(
     formData,
     originalFormData,
     apiKeys,
+    hasExtraChanges,
   )
 
   // Close handler with unsaved changes check
@@ -115,6 +118,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         setApiKeys({})
       }
 
+      setHasExtraChanges(false)
       setSuccessMessage("Settings saved successfully")
       markProvidersDirty()
       setTimeout(() => {
@@ -150,7 +154,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               </div>
             ) : (
               <>
-                {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} />}
+                {activeTab === "general" && <GeneralTab formData={formData} setFormData={setFormData} onExtraChange={setHasExtraChanges} />}
 
                 {customApi && activeTab === "api-keys" && (
                   <ApiKeysTab

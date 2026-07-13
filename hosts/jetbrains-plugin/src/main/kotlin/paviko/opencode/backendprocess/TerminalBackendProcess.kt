@@ -30,6 +30,7 @@ internal class TerminalBackendProcess(
     private val readyLatch = CountDownLatch(1)
     private val outputBuffer = PipedOutputStream()
     private val inputStreamBuffer = PipedInputStream(outputBuffer)
+    override val isExternal = false
 
     init {
         // Start the async terminal waiting and backend launch
