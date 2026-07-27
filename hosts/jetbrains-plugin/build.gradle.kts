@@ -76,8 +76,8 @@ intellijPlatform {
     pluginConfiguration {
         ideaVersion {
             sinceBuild.set("243")
+            untilBuild.set("262.*")
         }
-        // Provide metadata without setting an upper build bound (no untilBuild)
         description = providers.provider {
             val f = file("description.html")
             if (!f.isFile) {
@@ -148,11 +148,7 @@ tasks {
         }
     }
 
-    // Ensure no upper build bound is set in plugin.xml so the plugin stays compatible with newer IDEs
     patchPluginXml {
-        // keep sinceBuild from pluginConfiguration, but expand upper bound to newer IDE builds
-        untilBuild.set("261.*")
-
         if (guiOnly) {
             pluginId.set("paviko.opencode-ux-plus-gui-only")
             pluginName.set("OpenCode UX+ GUI Only (unofficial)")
