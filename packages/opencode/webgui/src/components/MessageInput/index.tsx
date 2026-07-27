@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle, useMemo } from "react"
 import { LexicalComposer } from "@lexical/react/LexicalComposer"
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
-import { $getRoot, $getSelection, $isRangeSelection, $createTextNode, type EditorState } from "lexical"
+import { $getRoot, $createTextNode, type EditorState } from "lexical"
 import { $createMentionNode } from "../mention/MentionNode"
 import { useSession } from "../../state/SessionContext"
 import { useProject } from "../../state/ProjectContext"
@@ -20,7 +20,7 @@ import { useFileAttachment } from "./hooks/useFileAttachment"
 import { useDragDrop } from "./hooks/useDragDrop"
 import { useEditorKeyboard } from "./hooks/useEditorKeyboard"
 import { useMessageParts } from "./hooks/useMessageParts"
-import { insertPlainWithMentionsImpl } from "./utils"
+import { insertPlainWithMentionsImpl, $ensureParagraphSelection } from "./utils"
 import { uiBridgeSubscribe, uiBridgeUpdate } from "../../state/uiBridgeState"
 
 interface MessageInputProps {
@@ -179,8 +179,7 @@ const MessageInputInner = forwardRef<
             return
           }
           editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection)) return
+            const selection = $ensureParagraphSelection()
             const nodes = [] as any[]
             for (const raw of paths) {
               const isDir = raw.endsWith("/")
@@ -228,8 +227,7 @@ const MessageInputInner = forwardRef<
             return
           }
           editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection)) return
+            const selection = $ensureParagraphSelection()
             let rel = toProjectRelative(path, worktree)
             if (!rel.endsWith("/")) rel = rel + "/"
             const metadata = {

@@ -4,9 +4,21 @@ import {
   $createTextNode,
   $getSelection,
   $isRangeSelection,
+  type RangeSelection,
   type LexicalEditor,
 } from "lexical"
 import { $createMentionNode } from "../mention/MentionNode"
+
+// Lexical's RangeSelection.insertNodes() appends an extra empty paragraph
+// when the selection anchor is the root node instead of a paragraph. That
+// happens after editor.focus()/root.clear() on the programmatic insertion
+// paths below (IDE "Add to context", drag & drop), producing a stray blank
+// line. Re-anchoring to root.selectEnd() avoids it.
+export function $ensureParagraphSelection(): RangeSelection {
+  const selection = $getSelection()
+  if ($isRangeSelection(selection) && selection.anchor.key !== "root") return selection
+  return $getRoot().selectEnd() as RangeSelection
+}
 
 export function insertPlainWithMentionsImpl(
   editor: LexicalEditor,
@@ -23,8 +35,7 @@ export function insertPlainWithMentionsImpl(
       root.append(paragraph)
       paragraph.select()
     }
-    const selection = $getSelection()
-    if (!$isRangeSelection(selection)) return
+    const selection = $ensureParagraphSelection()
     const nodes: any[] = []
     const re = /@(\S+)/g
     let last = 0

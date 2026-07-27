@@ -1,8 +1,9 @@
 import { useEffect } from "react"
-import { $getSelection, $isRangeSelection, $createTextNode, type LexicalEditor } from "lexical"
+import { $createTextNode, type LexicalEditor } from "lexical"
 import { $createMentionNode } from "../../mention/MentionNode"
 import { extractPathsFromDrop } from "../../../lib/dnd"
 import { toProjectRelative } from "../../../utils/path"
+import { $ensureParagraphSelection } from "../utils"
 
 interface UseDragDropOptions {
   contentEditableRef: React.RefObject<HTMLDivElement | null>
@@ -70,8 +71,7 @@ export function useDragDrop({
             return
           }
           editor.update(() => {
-            const selection = $getSelection()
-            if (!$isRangeSelection(selection)) return
+            const selection = $ensureParagraphSelection()
             const nodes = [] as any[]
 
             for (const raw of paths) {
