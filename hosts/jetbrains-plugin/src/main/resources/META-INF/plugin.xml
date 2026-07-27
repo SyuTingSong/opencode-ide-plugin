@@ -37,14 +37,5 @@
       <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta BACK_SLASH"/>
       <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta BACK_SLASH"/>
     </action>
-
-    <action id="paviko.opencode.actions.EditorAddLinesToContextAction"
-            class="paviko.opencode.actions.EditorAddLinesToContextAction"
-            text="OpenCode: Add lines to context">
-      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
-      <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift COMMA"/>
-      <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift BACK_SLASH"/>
-      <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift BACK_SLASH"/>
-    </action>
   </actions>
 </idea-plugin>
