@@ -11,11 +11,13 @@ import javax.swing.SwingUtilities
 object PathInserter {
     private val logger = Logger.getInstance(PathInserter::class.java)
 
-    fun insertPaths(project: Project, paths: List<String>) {
+    fun insertPaths(project: Project, paths: List<String>, newSession: Boolean = false) {
         try {
             if (paths.isEmpty()) return
-            
-            IdeBridge.send(project, "insertPaths", mapOf("paths" to paths))
+
+            val payload: Map<String, Any?> = if (newSession) mapOf("paths" to paths, "newSession" to true)
+                else mapOf("paths" to paths)
+            IdeBridge.send(project, "insertPaths", payload)
             activateToolWindow(project)
         } catch (e: Exception) {
             logger.error("Unexpected error inserting paths", e)

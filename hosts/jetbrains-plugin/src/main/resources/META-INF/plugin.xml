@@ -37,5 +37,12 @@
       <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta BACK_SLASH"/>
       <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta BACK_SLASH"/>
     </action>
+
+    <action id="paviko.opencode.actions.EditorAddToNewSessionAction"
+            class="paviko.opencode.actions.EditorAddToNewSessionAction"
+            text="OpenCode: Add to new session">
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+      <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+    </action>
   </actions>
 </idea-plugin>

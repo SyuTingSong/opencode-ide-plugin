@@ -125,6 +125,8 @@ function AppInner({ connectionState }: { connectionState: ConnectionState }) {
       if (msg.type === "insertPaths") {
         const paths = (msg.payload?.paths ?? msg.paths) as string[] | undefined
         if (Array.isArray(paths) && paths.length > 0) {
+          const newSession = !!(msg.payload?.newSession ?? msg.newSession)
+          if (newSession) newVirtual()
           messageInputRef.current?.focus()
           queueMicrotask(() => messageInputRef.current?.insertPaths(paths))
         }
