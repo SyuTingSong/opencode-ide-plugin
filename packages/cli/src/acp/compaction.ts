@@ -5,20 +5,22 @@ import { SessionMessage } from "@opencode/schema/session-message"
 
 const MarkerMeta = "opencode/compaction"
 
-type Started = { readonly status: "started"; readonly messageId: string; readonly reason: "auto" | "manual" }
+type Reason = Extract<SessionMessage.Compaction, { readonly status: "completed" }>["reason"]
+
+type Started = { readonly status: "started"; readonly messageId: string; readonly reason: Reason }
 
 type Compaction =
   | Started
   | {
       readonly status: "completed"
       readonly messageId: string
-      readonly reason: "auto" | "manual"
+      readonly reason: Reason
       readonly summary: string
     }
   | {
       readonly status: "failed"
       readonly messageId: string
-      readonly reason: "auto" | "manual"
+      readonly reason: Reason
       readonly error: SessionError.Error
     }
 

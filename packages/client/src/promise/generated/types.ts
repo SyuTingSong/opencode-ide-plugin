@@ -501,7 +501,7 @@ export type SessionMessageCompactionRunning = {
   metadata?: { [x: string]: JsonValue }
   time: { created: number }
   status: "running"
-  reason: "auto" | "manual"
+  reason: "auto" | "manual" | (string & {})
   summary: string
 }
 
@@ -629,7 +629,7 @@ export type SessionMessageCompactionFailed = {
   metadata?: { [x: string]: JsonValue }
   time: { created: number }
   status: "failed"
-  reason: "auto" | "manual"
+  reason: "auto" | "manual" | (string & {})
   error: SessionStructuredError
   cost?: MoneyUSD
   tokens?: TokenUsageInfo
@@ -1144,7 +1144,7 @@ export type SessionMessageCompactionCompleted = {
   metadata?: { [x: string]: JsonValue }
   time: { created: number }
   status: "completed"
-  reason: "auto" | "manual"
+  reason: "auto" | "manual" | (string & {})
   model?: ModelRef
   native?: SessionMessageNative
   summary: string
@@ -1696,7 +1696,7 @@ export type SessionCompactionStarted = {
   type: "session.compaction.started"
   durable: { aggregateID: string; seq: EventSeq; version: 1 }
   location?: LocationRef
-  data: { sessionID: SessionID; reason: "auto" | "manual"; inputID?: SessionMessageID }
+  data: { sessionID: SessionID; reason: "auto" | "manual" | (string & {}); recent: string; inputID?: SessionMessageID }
 }
 
 export type SessionCompactionEnded = {
@@ -1708,7 +1708,7 @@ export type SessionCompactionEnded = {
   location?: LocationRef
   data: {
     sessionID: SessionID
-    reason: "auto" | "manual"
+    reason: "auto" | "manual" | (string & {})
     model?: ModelRef
     native?: SessionMessageNative1
     text: string
@@ -1726,7 +1726,7 @@ export type SessionCompactionFailed = {
   location?: LocationRef
   data: {
     sessionID: SessionID
-    reason: "auto" | "manual"
+    reason: "auto" | "manual" | (string & {})
     error: SessionStructuredError
     inputID?: SessionMessageID
     cost?: MoneyUSD

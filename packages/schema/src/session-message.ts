@@ -253,6 +253,10 @@ export const Assistant = Schema.Struct({
 
 const CompactionBase = { type: Schema.tag("compaction"), ...Base }
 
+// "auto" (token threshold) and "manual" (user action) are the closed core set;
+// plugins may request compaction with their own open-ended reason.
+const CompactionReason = Schema.Union([Schema.Literal("auto"), Schema.Literal("manual"), Schema.String])
+
 /** Usage of the compaction request itself, not the size of the resulting context. */
 const CompactionUsage = {
   cost: Money.USD.pipe(optional),
@@ -263,7 +267,7 @@ export interface CompactionRunning extends Schema.Schema.Type<typeof CompactionR
 export const CompactionRunning = Schema.Struct({
   ...CompactionBase,
   status: Schema.tag("running"),
-  reason: Schema.Literals(["auto", "manual"]),
+  reason: CompactionReason,
   summary: Schema.String,
 }).annotate({ identifier: "Session.Message.Compaction.Running" })
 
@@ -271,7 +275,7 @@ export interface CompactionCompleted extends Schema.Schema.Type<typeof Compactio
 export const CompactionCompleted = Schema.Struct({
   ...CompactionBase,
   status: Schema.tag("completed"),
-  reason: Schema.Literals(["auto", "manual"]),
+  reason: CompactionReason,
   model: Model.Ref.pipe(optional),
   /** A provider compaction stores its replacement window in `native.messages`, replayed instead of `summary`. */
   native: Native.pipe(optional),
@@ -284,7 +288,7 @@ export interface CompactionFailed extends Schema.Schema.Type<typeof CompactionFa
 export const CompactionFailed = Schema.Struct({
   ...CompactionBase,
   status: Schema.tag("failed"),
-  reason: Schema.Literals(["auto", "manual"]),
+  reason: CompactionReason,
   error: SessionError.Error,
   ...CompactionUsage,
 }).annotate({ identifier: "Session.Message.Compaction.Failed" })
