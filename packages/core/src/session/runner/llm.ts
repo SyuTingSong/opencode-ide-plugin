@@ -38,6 +38,7 @@ import { PersistentPty } from "../../persistent-pty/index.js"
 import { ToolOutput } from "../../tool-output.js"
 import { Plugin } from "../../plugin.js"
 import { PluginHooks } from "../../plugin/hooks.js"
+import { CompactionSuggest } from "../compaction-suggest.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_OUTPUT_LIMIT =
@@ -60,6 +61,7 @@ const layer = Layer.effect(
     const plugins = yield* Plugin.Service
     const hooks = yield* PluginHooks.Service
     const jobs = yield* Job.Service
+    const compactionSuggest = yield* CompactionSuggest.Service
     const title = yield* SessionTitle.Service
     const steps = yield* SessionStep.make
     const cwd = yield* SessionCwd.make
@@ -328,6 +330,19 @@ const layer = Layer.effect(
             continue
           }
         }
+        const suggested = yield* compactionSuggest.consider(
+          sessionID,
+          step,
+          SessionCompaction.estimateContext(loaded),
+        )
+        if (suggested) {
+          const compacted = yield* compaction.compact({ reason: "suggest", context: loaded })
+          if (compacted.status === "completed") {
+            yield* compactionSuggest.compacted(sessionID, step)
+            assistantMessageID = SessionMessage.ID.create()
+            continue
+          }
+        }
         const activeCwd = yield* cwd.current(sessionID)
         const endsTurnTool =
           (yield* flags.enabled("codemode_agents")) &&
@@ -510,6 +525,7 @@ export const node = makeLocationNode({
     Plugin.node,
     PluginHooks.node,
     Job.node,
+    CompactionSuggest.node,
     SessionTitle.node,
     Snapshot.node,
     PersistentPty.node,
