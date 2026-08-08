@@ -981,6 +981,15 @@ export const layer = Layer.effect(
         : {}
       const listed = Object.fromEntries(Object.entries(lists).filter(([, items]) => items.length > 0))
       const metadata = Object.keys(listed).length > 0 ? { ...listed, ...outcome.metadata } : outcome.metadata
+      yield* Effect.logInfo("compaction completed", {
+        sessionID,
+        model: String(context.model.ref),
+        reason,
+        usageInputTokens: usage?.tokens.input,
+        usageOutputTokens: usage?.tokens.output,
+        contextTokens: estimateContext(context),
+        summaryTokens: Token.estimate(outcome.text),
+      })
 
       yield* bus.publish(
         SessionEvent.Compaction.Ended,
