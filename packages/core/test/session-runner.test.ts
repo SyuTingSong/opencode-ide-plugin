@@ -39,6 +39,7 @@ import { Session } from "@opencode/core/session"
 import { Snapshot } from "@opencode/core/snapshot"
 import { SessionEvent } from "@opencode/core/session/event"
 import { SessionCompaction } from "@opencode/core/session/compaction"
+import { CompactionSuggest } from "@opencode/core/session/compaction-suggest"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionMessage } from "@opencode/core/session/message"
 import { SessionModelTransport } from "@opencode/core/session/model-transport"
@@ -493,6 +494,7 @@ const layer = Layer.unwrap(
         Config.node,
         Snapshot.node,
         SessionCompaction.node,
+        CompactionSuggest.node,
         LayerNodePlatform.llmClient,
         SessionRunnerLLM.node,
         SessionExecution.node,
@@ -504,6 +506,7 @@ const layer = Layer.unwrap(
         LocationServiceMap.node.replace(promptLocationNode),
         Model.node.replace(promptModels),
         SessionExecution.node.replace(execution),
+        CompactionSuggest.node.replace(CompactionSuggest.make({ minContextTokens: 0 })),
       ],
     )
   }),
@@ -3490,6 +3493,31 @@ describe("SessionRunnerLLM", () => {
       { step: 1, compact: true },
       { step: 1, compact: false },
     ])
+  })
+
+  scenario("compacts at a step boundary when suggest_compact records a signal", function* (s) {
+    const store = yield* SessionStore.Service
+    const suggest = yield* CompactionSuggest.Service
+    yield* s.llm.push(TestLLM.textWithUsage("Earlier answer", "text-suggest-first", 3_950))
+    yield* s.runPrompt("Earlier question ".repeat(180))
+
+    s.requests.length = 0
+    yield* suggest.request(sessionID, "stage boundary reached")
+    yield* s.llm.push(
+      TestLLM.text("## Objective\n- Suggested summary", "text-suggest-summary"),
+      TestLLM.textWithUsage("Continued", "text-suggest-final", 3_950),
+    )
+    yield* s.runPrompt("Recent exact request ".repeat(180))
+
+    expect(s.requests).toHaveLength(2)
+    expect(userTexts(s.requests[1])[0]).toContain("<summary>\n## Objective\n- Suggested summary\n</summary>")
+    const context = yield* store.context(sessionID)
+    expect(context.map((message) => message.type)).toEqual(["compaction", "assistant"])
+    expect(context[0]).toMatchObject({
+      type: "compaction",
+      reason: "suggest",
+      summary: "## Objective\n- Suggested summary",
+    })
   })
 
   scenario("automatically persists native windows, retains earlier users, and waits for fresh usage", function* (s) {
