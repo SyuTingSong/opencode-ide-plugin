@@ -192,6 +192,43 @@ export interface SessionHooks {
   readonly "experimental.ws.receive": SessionWebSocketReceive
   readonly retry: SessionRetry
   readonly "experimental.idle": SessionIdle
+  readonly step: SessionStep
+}
+
+/**
+ * Snapshot of the next provider turn at a safe step boundary, offered before
+ * the engine streams it. Plugins estimate token counts from the built request
+ * and derive plan transitions, tool-output ratios, and the last compaction
+ * anchor from the projected history entries. The offered request is
+ * reflect-only; unlike earlier session hooks, edits are not applied.
+ */
+export interface SessionStep {
+  readonly sessionID: Session.ID
+  readonly agent: Agent.ID
+  /** The provider-turn step about to stream; resets to 1 when a new inbox item delivers. */
+  readonly step: number
+  readonly model: Model.Ref
+  /** The built provider request. */
+  readonly request: {
+    readonly system: readonly SystemPart[]
+    readonly messages: readonly Message[]
+    readonly tools: Readonly<Record<string, { description: string; input: JsonSchema.JsonSchema }>>
+  }
+  /**
+   * The projected history visible at this boundary, oldest first. Compaction
+   * messages serve as cooldown anchors; tool-call parts (e.g. todowrite) live
+   * in an assistant message's `content`.
+   */
+  readonly entries: ReadonlyArray<SessionMessage.Info>
+  /** Set to request compaction at this boundary; the engine reuses its safe compaction path. */
+  result?: SessionStepResult
+}
+
+export interface SessionStepResult {
+  /** Request compaction at this boundary. */
+  compact: boolean
+  /** Reason surfaced on the compaction events; defaults to "auto". */
+  reason?: string
 }
 
 export type SessionDomain = Pick<

@@ -270,16 +270,49 @@ const layer = Layer.effect(
             inputTokens: estimate,
           })
           .pipe(
-            // The hook event holds every message from before images are bounded, screenshots included, and is a separate
-            // copy once a plugin hook has rewritten it. The step and its tool callbacks live as long as the slowest tool,
-            // so they keep only what they use.
-            Effect.map((prepared) => ({
-              request: prepared.request,
-              options: prepared.options,
-              retry: prepared.retry,
-              executeTool: prepared.executeTool,
-            })),
+            Effect.flatMap((primary) =>
+              // Plugins steer compaction at the last safe boundary before the provider turn streams.
+              // A steered compaction reuses the safe compaction path; skipped when automatic compaction
+              // is off. Plugins own their cooldown: without one, a hook that always requests compaction
+              // re-fires on the rebuilt request and loops.
+              hooks
+                .trigger("session", "step", {
+                  sessionID,
+                  agent: loaded.agent.id,
+                  step,
+                  model: loaded.model.ref,
+                  request: {
+                    system: primary.event.system,
+                    messages: primary.event.messages,
+                    tools: primary.event.tools,
+                  },
+                  entries: loaded.messages,
+                })
+                .pipe(
+                  // The hook event holds every message from before images are bounded, screenshots included, and is a separate
+                  // copy once a plugin hook has rewritten it. The step and its tool callbacks live as long as the slowest tool,
+                  // so they keep only what they use, and the event copy is dropped before the step runs.
+                  Effect.map((steered) => ({
+                    request: primary.request,
+                    options: primary.options,
+                    retry: primary.retry,
+                    executeTool: primary.executeTool,
+                    steered,
+                  })),
+                ),
+            ),
           )
+        if (prepared.steered.result?.compact) {
+          const compacted = yield* compaction.compact({
+            reason: prepared.steered.result.reason ?? "plugin",
+            context: loaded,
+          })
+          if (compacted.status === "failed") return yield* new StepFailedError({ error: compacted.error })
+          if (compacted.status === "completed") {
+            assistantMessageID = SessionMessage.ID.create()
+            continue
+          }
+        }
         const outcome = yield* steps.attempt({
           isLocationClosed: lifecycle.isClosed,
           sessionID,

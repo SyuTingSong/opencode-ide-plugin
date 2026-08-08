@@ -1282,7 +1282,8 @@ export type ExperimentalSessionLogOutput =
             | undefined
           readonly data: {
             readonly sessionID: Session.ID
-            readonly reason: "auto" | "manual"
+            readonly reason: "auto" | "manual" | string
+            readonly recent: string
             readonly inputID?: SessionMessage.ID | undefined
           }
         }
@@ -1297,7 +1298,7 @@ export type ExperimentalSessionLogOutput =
             | undefined
           readonly data: {
             readonly sessionID: Session.ID
-            readonly reason: "auto" | "manual"
+            readonly reason: "auto" | "manual" | string
             readonly model?: Model.Ref | undefined
             readonly native?: SessionMessage.Native | undefined
             readonly text: string
@@ -1323,7 +1324,7 @@ export type ExperimentalSessionLogOutput =
             | undefined
           readonly data: {
             readonly sessionID: Session.ID
-            readonly reason: "auto" | "manual"
+            readonly reason: "auto" | "manual" | string
             readonly error: {
               readonly type: string
               readonly message: string

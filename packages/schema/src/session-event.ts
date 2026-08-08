@@ -590,7 +590,10 @@ export namespace Compaction {
     ...options,
     schema: {
       ...Base,
-      reason: Schema.Literals(["auto", "manual"]),
+      // "auto" (token threshold) and "manual" (user action) are the closed core set;
+      // plugins may request compaction with their own open-ended reason.
+      reason: Schema.Union([Schema.Literal("auto"), Schema.Literal("manual"), Schema.String]),
+      recent: Schema.String,
       inputID: SessionMessage.ID.pipe(optional),
     },
   })
