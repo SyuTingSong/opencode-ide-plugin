@@ -151,6 +151,25 @@ A continuation runs inside the same execution, so a loop that is still going whe
 restart recovery and the hook keeps running. Persist your own state if the loop should come back paused. A hook that
 fails, fails the execution like any other session hook, so handle errors from slow or remote work such as a judge model
 call.
+The session step hook runs at every safe step boundary, after tool settlement and before the next provider turn
+streams:
+
+```ts
+yield *
+  ctx.session.hook("step", (event) =>
+    Effect.sync(() => {
+      if (event.step === 1) return
+      // Estimate exact token counts from the built request; read projected
+      // history entries for todo transitions, tool-output ratios, and the last
+      // compaction anchor.
+      event.result = { compact: true, reason: "plan-transition" }
+    }),
+  )
+```
+
+Setting `result` requests compaction. The engine reuses its safe compaction path at the boundary and re-runs the same
+step with compacted history; the reason is surfaced on the compaction events. Plugins own their cooldown: keep
+requesting from the last compaction anchor (a `compaction` entry in `event.entries`) so repeated requests cannot loop.
 
 ## Reloading A Domain
 
