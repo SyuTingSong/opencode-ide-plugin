@@ -11,7 +11,7 @@ import { SessionSchema } from "./schema"
  * sessions.
  */
 export const DEFAULT_MIN_CONTEXT_TOKENS = 100_000
-export const DEFAULT_COOLDOWN_STEPS = 5
+export const DEFAULT_COOLDOWN_STEPS = 15
 
 // Test levers: let real-session runs tune the gates without a rebuild.
 const envMinContextTokens = () => {
