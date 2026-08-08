@@ -179,17 +179,34 @@ export const make = (dependencies: Dependencies) => {
   const config = settings(dependencies.config)
   const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {
     const context = input.model.route.defaults.limits?.context
-    if (context === undefined || context <= 0) return false
+    if (context === undefined || context <= 0) {
+      yield* Effect.logWarning("compaction aborted: model has no context limit", {
+        sessionID: input.sessionID,
+        model: input.model.id,
+      })
+      return false
+    }
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
     const selected = select(input.entries, config.tokens)
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
-    if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) return false
+    if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) {
+      yield* Effect.logWarning("compaction aborted: no selectable history", { sessionID: input.sessionID })
+      return false
+    }
     const summaryPrompt = buildPrompt({
       previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
       context: [previousSummary?.type === "compaction" ? previousSummary.recent : "", selected.head].filter(Boolean),
     })
     const summaryOutput = Math.min(output || SUMMARY_OUTPUT_TOKENS, SUMMARY_OUTPUT_TOKENS)
-    if (Token.estimate(summaryPrompt) > context - summaryOutput) return false
+    if (Token.estimate(summaryPrompt) > context - summaryOutput) {
+      yield* Effect.logWarning("compaction aborted: summary prompt exceeds context", {
+        sessionID: input.sessionID,
+        summaryPromptTokens: Token.estimate(summaryPrompt),
+        context,
+        summaryOutput,
+      })
+      return false
+    }
     const messageID = SessionMessage.ID.create()
     yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
       sessionID: input.sessionID,
@@ -222,7 +239,15 @@ export const make = (dependencies: Dependencies) => {
         Effect.catchTag("LLM.Error", () => Effect.succeed(false)),
       )
     const summary = chunks.join("")
-    if (!summarized || failed || !summary.trim()) return false
+    if (!summarized || failed || !summary.trim()) {
+      yield* Effect.logWarning("compaction aborted: summary generation failed", {
+        sessionID: input.sessionID,
+        summarized,
+        failed,
+        summaryTokens: estimate(summary),
+      })
+      return false
+    }
     yield* Effect.logInfo("compaction completed", {
       sessionID: input.sessionID,
       model: input.model.id,
