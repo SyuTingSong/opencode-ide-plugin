@@ -1,6 +1,6 @@
 export * as SessionCompaction from "./compaction"
 
-import { LLM, LLMError, LLMEvent, Message, type LLMRequest, type Model } from "@opencode-ai/llm"
+import { LLM, LLMError, LLMEvent, Message, type LLMRequest, type Model, type Usage } from "@opencode-ai/llm"
 import { DateTime, Effect, Stream } from "effect"
 import type { Config } from "../config"
 import type { EventV2 } from "../event"
@@ -200,6 +200,7 @@ export const make = (dependencies: Dependencies) => {
 
     const chunks: string[] = []
     let failed = false
+    let usage: Usage | undefined
     const summarized = yield* dependencies.llm
       .stream(
         LLM.request({
@@ -214,6 +215,7 @@ export const make = (dependencies: Dependencies) => {
         Stream.runForEach((event) => {
           if (LLMEvent.is.providerError(event)) failed = true
           if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
+          if (LLMEvent.is.finish(event)) usage = event.usage
           return Effect.void
         }),
         Effect.as(true),
@@ -221,6 +223,16 @@ export const make = (dependencies: Dependencies) => {
       )
     const summary = chunks.join("")
     if (!summarized || failed || !summary.trim()) return false
+    yield* Effect.logInfo("compaction completed", {
+      sessionID: input.sessionID,
+      model: input.model.id,
+      reason: input.reason ?? "auto",
+      usageInputTokens: usage?.inputTokens,
+      usageOutputTokens: usage?.outputTokens,
+      contextTokens: estimate({ system: input.request.system, messages: input.request.messages, tools: input.request.tools }),
+      summaryTokens: estimate(summary),
+      recentTokens: estimate(selected.recent),
+    })
     yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
       sessionID: input.sessionID,
       messageID,
