@@ -13,10 +13,14 @@ import { SessionSchema } from "./schema"
 export const DEFAULT_MIN_CONTEXT_TOKENS = 100_000
 export const DEFAULT_COOLDOWN_STEPS = 5
 
-// Test lever: lets real-session runs lower the economic gate without a rebuild.
+// Test levers: let real-session runs tune the gates without a rebuild.
 const envMinContextTokens = () => {
   const raw = process.env.OPENCODE_SUGGEST_MIN_TOKENS
   return raw === undefined ? DEFAULT_MIN_CONTEXT_TOKENS : Number(raw)
+}
+const envCooldownSteps = () => {
+  const raw = process.env.OPENCODE_SUGGEST_COOLDOWN_STEPS
+  return raw === undefined ? DEFAULT_COOLDOWN_STEPS : Number(raw)
 }
 
 export interface Options {
@@ -46,7 +50,7 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/v2
 
 export function make(options: Partial<Options> = {}) {
   const minContextTokens = options.minContextTokens ?? envMinContextTokens()
-  const cooldownSteps = options.cooldownSteps ?? DEFAULT_COOLDOWN_STEPS
+  const cooldownSteps = options.cooldownSteps ?? envCooldownSteps()
   const layer = Layer.effect(
     Service,
     Effect.gen(function* () {
