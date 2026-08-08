@@ -13,6 +13,7 @@ import { Provider } from "@/provider/provider"
 import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
+import { CompactionSuggestV1 } from "./compaction-suggest"
 import { SystemPrompt } from "./system"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
@@ -119,6 +120,7 @@ const layer = Layer.effect(
     const provider = yield* Provider.Service
     const processor = yield* SessionProcessor.Service
     const compaction = yield* SessionCompaction.Service
+    const compactionSuggest = yield* CompactionSuggestV1.Service
     const plugin = yield* Plugin.Service
     const commands = yield* Command.Service
     const config = yield* Config.Service
@@ -1167,6 +1169,16 @@ const layer = Layer.effect(
             continue
           }
 
+          if (lastFinished && lastFinished.summary !== true) {
+            const tokens = lastFinished.tokens
+            const count = tokens.total || tokens.input + tokens.output + tokens.cache.read + tokens.cache.write
+            if (yield* compactionSuggest.consider(sessionID, count, step)) {
+              yield* compactionSuggest.compacted(sessionID, step)
+              yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+              continue
+            }
+          }
+
           const agent = yield* agents.get(lastUser.agent)
           if (!agent) {
             const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
@@ -1605,6 +1617,7 @@ export const node = LayerNode.make({
     Provider.node,
     SessionProcessor.node,
     SessionCompaction.node,
+    CompactionSuggestV1.node,
     Plugin.node,
     Command.node,
     Config.node,
