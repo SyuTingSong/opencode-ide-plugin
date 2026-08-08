@@ -875,6 +875,7 @@ export const layer = Layer.effect(
       const usage = spent.get(sessionID)
 
       if ("error" in outcome) {
+        yield* Effect.logWarning("compaction failed", { sessionID, reason, error: outcome.error })
         yield* bus.publish(SessionEvent.Compaction.Failed, {
           sessionID,
           reason,
