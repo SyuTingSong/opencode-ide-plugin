@@ -885,6 +885,17 @@ export const layer = Layer.effect(
         return { status: "failed", error: outcome.error }
       }
 
+      yield* Effect.logInfo("compaction completed", {
+        sessionID,
+        model: String(context.model.ref),
+        reason,
+        usageInputTokens: usage?.tokens.input,
+        usageOutputTokens: usage?.tokens.output,
+        contextTokens: estimateContext(context),
+        summaryTokens: Token.estimate(outcome.text),
+        recentTokens: Token.estimate(outcome.recent),
+      })
+
       yield* bus.publish(
         SessionEvent.Compaction.Ended,
         {
