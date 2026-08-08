@@ -81,6 +81,27 @@ yield *
 
 Hooks run sequentially in registration order. Later hooks observe mutations made by earlier hooks.
 
+## Session Step Hook
+
+The session domain exposes one runtime hook at every safe step boundary (after
+tool settlement, before the next provider turn streams):
+
+```ts
+yield * ctx.session.step((input) => {
+  if (input.step === 1) return
+  // Estimate exact token counts from the built request; read projected
+  // history entries for todo transitions, tool-output ratios, and the last
+  // compaction anchor.
+  return { compact: true, reason: "plan-transition" }
+})
+```
+
+Returning `{ compact: true }` requests compaction. The engine reuses its safe
+compaction path at the boundary and re-runs the same step with compacted
+history; the returned `reason` is surfaced on the compaction events. Plugins
+own their cooldown: keep requesting from the last compaction anchor (a
+`compaction` entry in `input.entries`) so repeated requests cannot loop.
+
 ## Reloading A Domain
 
 When data captured by a transform changes, reload the affected domain:

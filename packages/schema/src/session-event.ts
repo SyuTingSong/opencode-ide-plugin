@@ -402,7 +402,9 @@ export namespace Compaction {
     schema: {
       ...Base,
       messageID: SessionMessage.ID,
-      reason: Schema.Union([Schema.Literal("auto"), Schema.Literal("manual")]),
+      // "auto" (token threshold) and "manual" (user action) are the closed core set;
+      // plugins may request compaction with their own open-ended reason.
+      reason: Schema.Union([Schema.Literal("auto"), Schema.Literal("manual"), Schema.String]),
     },
   })
   export type Started = typeof Started.Type
