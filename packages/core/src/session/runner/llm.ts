@@ -16,6 +16,7 @@ import { EventV2 } from "../../event"
 import { Location } from "../../location"
 import { ModelV2 } from "../../model"
 import { PermissionV2 } from "../../permission"
+import { PluginSession } from "../../plugin/session"
 import { ProviderV2 } from "../../provider"
 import { QuestionV2 } from "../../question"
 import { SystemContext } from "../../system-context/index"
@@ -103,6 +104,7 @@ const layer = Layer.effect(
     const systemContext = yield* SystemContextRegistry.Service
     const skillGuidance = yield* SkillGuidance.Service
     const referenceGuidance = yield* ReferenceGuidance.Service
+    const sessionPlugin = yield* PluginSession.Service
     const config = yield* Config.Service
     const snapshots = yield* Snapshot.Service
     const db = (yield* Database.Service).db
@@ -221,6 +223,27 @@ const layer = Layer.effect(
       })
       if (yield* compaction.compactIfNeeded({ sessionID: session.id, entries, model, request }))
         return yield* Effect.die(continueAfterCompaction(currentStep))
+      if (compaction.auto()) {
+        // Plugins own their cooldown: without one, a hook that always requests
+        // compaction re-fires after the in-place re-run and loops.
+        const requested = yield* sessionPlugin.runStep({
+          sessionID: session.id,
+          step: currentStep,
+          model,
+          request,
+          entries,
+        })
+        if (requested?.compact) {
+          const compacted = yield* compaction.compactAfterOverflow({
+            sessionID: session.id,
+            entries,
+            model,
+            request,
+            reason: requested.reason,
+          })
+          if (compacted) return yield* Effect.die(continueAfterCompaction(currentStep))
+        }
+      }
       const startSnapshot = yield* snapshots.capture()
       const publisher = createLLMEventPublisher(events, {
         sessionID: session.id,
@@ -433,6 +456,7 @@ export const node = makeLocationNode({
     SkillGuidance.node,
     ReferenceGuidance.node,
     Config.node,
+    PluginSession.node,
     Snapshot.node,
     Database.node,
   ],

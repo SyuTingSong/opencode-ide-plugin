@@ -78,6 +78,8 @@ type Input = {
   readonly entries: readonly Entry[]
   readonly model: Model
   readonly request: LLMRequest
+  /** Why compaction was requested; surfaced on the compaction events. Defaults to "auto". */
+  readonly reason?: string
 }
 
 const estimate = (value: unknown) => Token.estimate(JSON.stringify(value))
@@ -193,7 +195,7 @@ export const make = (dependencies: Dependencies) => {
       sessionID: input.sessionID,
       messageID,
       timestamp: yield* DateTime.now,
-      reason: "auto",
+      reason: input.reason ?? "auto",
     })
 
     const chunks: string[] = []
@@ -223,7 +225,7 @@ export const make = (dependencies: Dependencies) => {
       sessionID: input.sessionID,
       messageID,
       timestamp: yield* DateTime.now,
-      reason: "auto",
+      reason: input.reason ?? "auto",
       text: summary,
       recent: selected.recent,
     })
@@ -244,5 +246,7 @@ export const make = (dependencies: Dependencies) => {
   return {
     compactIfNeeded,
     compactAfterOverflow,
+    /** Whether automatic compaction is enabled at all; gates the semantic plugin path too. */
+    auto: () => config.auto,
   }
 }

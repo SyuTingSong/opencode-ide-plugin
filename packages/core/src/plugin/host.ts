@@ -10,6 +10,7 @@ import { Credential } from "../credential"
 import { Integration } from "../integration"
 import { ModelV2 } from "../model"
 import { PluginV2 } from "../plugin"
+import { PluginSession } from "../plugin/session"
 import { ProviderV2 } from "../provider"
 import { Reference } from "../reference"
 import type { DeepMutable } from "../schema"
@@ -24,6 +25,7 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
   const commands = yield* CommandV2.Service
   const integration = yield* Integration.Service
   const reference = yield* Reference.Service
+  const session = yield* PluginSession.Service
   const skill = yield* SkillV2.Service
 
   return {
@@ -204,6 +206,9 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
             list: draft.list,
           }),
         ),
+    },
+    session: {
+      step: session.hook.step,
     },
     skill: {
       reload: skill.reload,

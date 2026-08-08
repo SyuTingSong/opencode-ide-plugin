@@ -55,6 +55,7 @@ import { ReferenceGuidance } from "@opencode-ai/core/reference/guidance"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { Location } from "@opencode-ai/core/location"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { PluginSession } from "@opencode-ai/core/plugin/session"
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 import { asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
@@ -105,6 +106,11 @@ const compactModel = Model.make({
 })
 const recoveryModel = Model.make({
   id: "recovery",
+  provider: "fake",
+  route: OpenAIChat.route.with({ limits: { context: 20_000, output: 1_000 } }),
+})
+const hookModel = Model.make({
+  id: "step-hook",
   provider: "fake",
   route: OpenAIChat.route.with({ limits: { context: 20_000, output: 1_000 } }),
 })
@@ -270,6 +276,7 @@ const it = testEffect(
       ReferenceGuidance.node,
       Config.node,
       Snapshot.node,
+      PluginSession.node,
       SessionRunnerLLM.node,
       SessionExecution.node,
       SessionV2.node,
@@ -1206,6 +1213,59 @@ describe("SessionRunnerLLM", () => {
       expect(continuation).not.toContain("OVERSIZED_BOUNDARY")
       expect(continuation).not.toContain("OVERSIZED_END")
       expect(continuation).toContain("<recent-context>\n\n</recent-context>")
+    }),
+  )
+
+  it.effect("compacts at a step boundary when a plugin step hook requests it", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const sessionPlugin = yield* PluginSession.Service
+      const stepInputs: { sessionID: string; step: number; model: { id: string }; compact: boolean }[] = []
+      yield* sessionPlugin.hook.step((input) => {
+        if (input.model.id !== "step-hook") return { compact: false }
+        const alreadyCompacted = input.entries.some((entry) => entry.message.type === "compaction")
+        stepInputs.push({ ...input, compact: !alreadyCompacted })
+        return alreadyCompacted ? { compact: false } : { compact: true, reason: "plan-transition" }
+      })
+      response = fragmentFixture("text", "text-first", ["Earlier answer"]).completeEvents
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Earlier question ".repeat(200) }),
+        resume: false,
+      })
+      yield* session.resume(sessionID)
+
+      currentModel = hookModel
+      requests.length = 0
+      responses = [
+        fragmentFixture("text", "text-summary", ["## Objective\n- Step boundary summary"]).completeEvents,
+        fragmentFixture("text", "text-final", ["Continued"]).completeEvents,
+      ]
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Recent question ".repeat(200) }),
+        resume: false,
+      })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      expect(userTexts(requests[0])[0]).toContain("## Objective")
+      expect(userTexts(requests[1])[0]).toContain("<summary>\n## Objective\n- Step boundary summary\n</summary>")
+      expect(userTexts(requests[1])[0]).toContain("[User]: Recent question")
+
+      const context = yield* (yield* SessionStore.Service).context(sessionID)
+      expect(context.map((message) => message.type)).toEqual(["compaction", "assistant"])
+      expect(context[0]).toMatchObject({
+        type: "compaction",
+        summary: "## Objective\n- Step boundary summary",
+        reason: "plan-transition",
+      })
+      expect(stepInputs.filter((input) => input.compact)).toHaveLength(1)
+      expect(stepInputs.find((input) => input.compact)).toMatchObject({
+        sessionID,
+        step: 1,
+      })
     }),
   )
 

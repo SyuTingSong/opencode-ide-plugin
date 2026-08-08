@@ -666,7 +666,7 @@ export type SessionsContextOutput = {
       }
     | {
         readonly type: "compaction"
-        readonly reason: "auto" | "manual"
+        readonly reason: "auto" | "manual" | string
         readonly summary: string
         readonly recent: string
         readonly id: string
@@ -1074,7 +1074,7 @@ export type SessionsHistoryOutput = {
           readonly timestamp: number
           readonly sessionID: string
           readonly messageID: string
-          readonly reason: "auto" | "manual"
+          readonly reason: "auto" | "manual" | string
         }
       }
     | {
@@ -1087,7 +1087,7 @@ export type SessionsHistoryOutput = {
           readonly timestamp: number
           readonly sessionID: string
           readonly messageID: string
-          readonly reason: "auto" | "manual"
+          readonly reason: "auto" | "manual" | string
           readonly text: string
           readonly recent: string
         }
@@ -1532,7 +1532,7 @@ export type SessionsEventsOutput =
         readonly timestamp: number
         readonly sessionID: string
         readonly messageID: string
-        readonly reason: "auto" | "manual"
+        readonly reason: "auto" | "manual" | string
       }
     }
   | {
@@ -1545,7 +1545,7 @@ export type SessionsEventsOutput =
         readonly timestamp: number
         readonly sessionID: string
         readonly messageID: string
-        readonly reason: "auto" | "manual"
+        readonly reason: "auto" | "manual" | string
         readonly text: string
         readonly recent: string
       }
@@ -1744,7 +1744,7 @@ export type SessionsMessageOutput = {
       }
     | {
         readonly type: "compaction"
-        readonly reason: "auto" | "manual"
+        readonly reason: "auto" | "manual" | string
         readonly summary: string
         readonly recent: string
         readonly id: string
@@ -1916,7 +1916,7 @@ export type MessagesListOutput = {
       }
     | {
         readonly type: "compaction"
-        readonly reason: "auto" | "manual"
+        readonly reason: "auto" | "manual" | string
         readonly summary: string
         readonly recent: string
         readonly id: string
