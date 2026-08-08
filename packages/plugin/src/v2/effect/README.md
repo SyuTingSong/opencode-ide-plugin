@@ -88,7 +88,7 @@ tool settlement, before the next provider turn streams):
 
 ```ts
 yield * ctx.session.step((input) => {
-  if (input.step === 1) return
+  if (input.step === 1) return { compact: false }
   // Estimate exact token counts from the built request; read projected
   // history entries for todo transitions, tool-output ratios, and the last
   // compaction anchor.
