@@ -56,6 +56,7 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { Location } from "@opencode-ai/core/location"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { PluginSession } from "@opencode-ai/core/plugin/session"
+import { CompactionSuggest } from "@opencode-ai/core/session/compaction-suggest"
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 import { asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
@@ -277,6 +278,7 @@ const it = testEffect(
       Config.node,
       Snapshot.node,
       PluginSession.node,
+      CompactionSuggest.node,
       SessionRunnerLLM.node,
       SessionExecution.node,
       SessionV2.node,
@@ -292,6 +294,7 @@ const it = testEffect(
       [Snapshot.node, Snapshot.noopLayer],
       [SessionExecution.node, execution],
       [Config.node, config],
+      [CompactionSuggest.node, CompactionSuggest.make({ minContextTokens: 0 })],
     ],
   ),
 )
@@ -1265,6 +1268,46 @@ describe("SessionRunnerLLM", () => {
       expect(stepInputs.find((input) => input.compact)).toMatchObject({
         sessionID,
         step: 1,
+      })
+    }),
+  )
+
+  it.effect("compacts at a step boundary when suggest_compact records a signal", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* SessionV2.Service
+      const suggest = yield* CompactionSuggest.Service
+      response = fragmentFixture("text", "text-first", ["Earlier answer"]).completeEvents
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Earlier question ".repeat(200) }),
+        resume: false,
+      })
+      yield* session.resume(sessionID)
+
+      currentModel = hookModel
+      requests.length = 0
+      responses = [
+        fragmentFixture("text", "text-summary", ["## Objective\n- Suggested summary"]).completeEvents,
+        fragmentFixture("text", "text-final", ["Continued"]).completeEvents,
+      ]
+      yield* suggest.request(sessionID, "stage boundary reached")
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Recent question ".repeat(200) }),
+        resume: false,
+      })
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      expect(userTexts(requests[1])[0]).toContain("<summary>\n## Objective\n- Suggested summary\n</summary>")
+
+      const context = yield* (yield* SessionStore.Service).context(sessionID)
+      expect(context.map((message) => message.type)).toEqual(["compaction", "assistant"])
+      expect(context[0]).toMatchObject({
+        type: "compaction",
+        summary: "## Objective\n- Suggested summary",
+        reason: "suggest",
       })
     }),
   )
