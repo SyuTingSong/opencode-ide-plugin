@@ -19,6 +19,7 @@ import { PermissionV2 } from "../../permission"
 import { PluginSession } from "../../plugin/session"
 import { ProviderV2 } from "../../provider"
 import { QuestionV2 } from "../../question"
+import { CompactionSuggest } from "../compaction-suggest"
 import { SystemContext } from "../../system-context/index"
 import { SystemContextRegistry } from "../../system-context/registry"
 import { SkillGuidance } from "../../skill/guidance"
@@ -38,6 +39,7 @@ import { createLLMEventPublisher } from "./publish-llm-event"
 import { toLLMMessages } from "./to-llm-message"
 import { MAX_STEPS_PROMPT } from "./max-steps"
 import { Snapshot } from "../../snapshot"
+import { Token } from "../../util/token"
 import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
 
@@ -105,6 +107,7 @@ const layer = Layer.effect(
     const skillGuidance = yield* SkillGuidance.Service
     const referenceGuidance = yield* ReferenceGuidance.Service
     const sessionPlugin = yield* PluginSession.Service
+    const compactionSuggest = yield* CompactionSuggest.Service
     const config = yield* Config.Service
     const snapshots = yield* Snapshot.Service
     const db = (yield* Database.Service).db
@@ -242,6 +245,24 @@ const layer = Layer.effect(
             reason: requested.reason,
           })
           if (compacted) return yield* Effect.die(continueAfterCompaction(currentStep))
+        }
+        const suggested = yield* compactionSuggest.consider(
+          session.id,
+          currentStep,
+          Token.estimate(JSON.stringify({ system: request.system, messages: request.messages, tools: request.tools })),
+        )
+        if (suggested) {
+          const compacted = yield* compaction.compactAfterOverflow({
+            sessionID: session.id,
+            entries,
+            model,
+            request,
+            reason: "suggest",
+          })
+          if (compacted) {
+            yield* compactionSuggest.compacted(session.id, currentStep)
+            return yield* Effect.die(continueAfterCompaction(currentStep))
+          }
         }
       }
       const startSnapshot = yield* snapshots.capture()
@@ -457,6 +478,7 @@ export const node = makeLocationNode({
     ReferenceGuidance.node,
     Config.node,
     PluginSession.node,
+    CompactionSuggest.node,
     Snapshot.node,
     Database.node,
   ],
