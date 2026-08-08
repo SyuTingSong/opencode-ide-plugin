@@ -53,7 +53,9 @@ export function make(options: Partial<Options> = {}) {
             const next = new Map(map)
             next.set(sessionID, reason)
             return next
-          }),
+          }).pipe(
+            Effect.tap(() => Effect.logInfo("suggest_compact requested", { sessionID, reason })),
+          ),
         consider: (sessionID, step, estTokens) =>
           Effect.gen(function* () {
             const reason = yield* Ref.modify(pending, (map) => {
@@ -67,7 +69,16 @@ export function make(options: Partial<Options> = {}) {
             const last = yield* Ref.get(lastCompact)
             const previous = last.get(sessionID)
             const inCooldown = previous !== undefined && step - previous < cooldownSteps
-            return !inCooldown && estTokens >= minContextTokens
+            const approved = !inCooldown && estTokens >= minContextTokens
+            yield* Effect.logInfo("suggest_compact evaluated", {
+              sessionID,
+              step,
+              estTokens,
+              approved,
+              lastCompactStep: previous,
+              reason,
+            })
+            return approved
           }),
         compacted: (sessionID, step) =>
           Ref.update(lastCompact, (map) => {
