@@ -54,9 +54,17 @@ export type Editor = {
 
 export type Trigger =
   /** `overflow`: the provider just rejected this context as too long. */
-  | { readonly reason: "auto" | "overflow"; readonly context: SessionContext.Loaded }
-  /** `inputID` is the `/compact` inbox item, whose message shows the outcome. */
-  | { readonly reason: "manual"; readonly context: SessionContext.Loaded; readonly inputID: SessionMessage.ID }
+  | { readonly reason: "auto" | "overflow"; readonly context: SessionContext.Loaded; readonly inputID?: never }
+  /**
+   * `inputID` is the `/compact` inbox item, whose message shows the outcome. A
+   * plugin-requested reason (via the session step hook) shares this variant:
+   * forced even when not due, still gated by the auto setting.
+   */
+  | {
+      readonly reason: "manual" | (string & {})
+      readonly context: SessionContext.Loaded
+      readonly inputID?: SessionMessage.ID
+    }
 
 export type Outcome =
   /** Only `auto` skips: the context fits, or automatic compaction is off. */
@@ -861,7 +869,9 @@ export const layer = Layer.effect(
     ): Effect.fn.Return<Outcome> {
       const context = trigger.context
       const sessionID = context.session.id
-      const reason = trigger.reason === "manual" ? "manual" : "auto"
+      // Built-in triggers keep their normalized published reason; plugin-requested
+      // compaction surfaces its own reason verbatim on the events.
+      const reason = trigger.reason === "auto" || trigger.reason === "overflow" ? "auto" : trigger.reason
       const usage = spent.get(sessionID)
 
       if ("error" in outcome) {

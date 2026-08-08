@@ -121,6 +121,7 @@ const fakeIdentity = identity("fake", "fake-model")
 const replacementIdentity = identity("fake", "replacement")
 const gptIdentity = identity("openai", "gpt-5")
 const replacementModel = testModel("replacement")
+const hookModel = testModel("hook-model")
 const compactModel = testModel("compact", { context: 4_000, output: 50 })
 const fullOutputModel = testModel("full-output", { context: 262_144, output: 262_144 })
 const unknownContextModel = testModel("unknown-context", { context: 0, output: 32_000 })
@@ -3206,6 +3207,50 @@ describe("SessionRunnerLLM", () => {
       summary: "## Objective\n- Preserve the updated task",
       metadata: { recent: `[User]: ${"Newest exact request ".repeat(180)}` },
     })
+  })
+
+  scenario("compacts at a step boundary when a plugin step hook requests it", function* (s) {
+    const store = yield* SessionStore.Service
+    const hooks = yield* PluginHooks.Service
+    const stepInputs: { step: number; compact: boolean }[] = []
+    // Plugins own their cooldown: request at most once, then leave the rewritten boundary alone.
+    yield* hooks.register("session", "step", (event) =>
+      Effect.sync(() => {
+        if (event.result?.compact) return
+        stepInputs.push({ step: event.step, compact: false })
+        if (event.model.id !== Model.ID.make("hook-model")) return
+        if (event.entries.some((entry) => entry.type === "compaction")) return
+        event.result = { compact: true, reason: "plan-transition" }
+        stepInputs[stepInputs.length - 1] = { step: event.step, compact: true }
+      }),
+    )
+    yield* s.llm.push(TestLLM.textWithUsage("Earlier answer", "text-hook-first", 3_950))
+    yield* s.runPrompt("Earlier question ".repeat(180))
+    expect(stepInputs).toEqual([{ step: 1, compact: false }])
+
+    s.currentModel = hookModel
+    s.requests.length = 0
+    yield* s.llm.push(
+      TestLLM.text("## Objective\n- Step boundary summary", "text-hook-summary"),
+      TestLLM.textWithUsage("Continued", "text-hook-final", 3_950),
+    )
+    yield* s.runPrompt("Recent exact request ".repeat(180))
+
+    expect(s.requests).toHaveLength(2)
+    expect(userTexts(s.requests[1])[0]).toContain("<summary>\n## Objective\n- Step boundary summary\n</summary>")
+    const context = yield* store.context(sessionID)
+    expect(context.map((message) => message.type)).toEqual(["compaction", "assistant"])
+    expect(context[0]).toMatchObject({
+      type: "compaction",
+      reason: "plan-transition",
+      summary: "## Objective\n- Step boundary summary",
+    })
+    expect(stepInputs.filter((input) => input.compact)).toHaveLength(1)
+    expect(stepInputs).toMatchObject([
+      { step: 1, compact: false },
+      { step: 1, compact: true },
+      { step: 1, compact: false },
+    ])
   })
 
   scenario("automatically persists native windows, retains earlier users, and waits for fresh usage", function* (s) {

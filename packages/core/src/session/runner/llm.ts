@@ -29,6 +29,7 @@ import { SessionRunnerRetry } from "./retry.js"
 import { SessionStep } from "./step.js"
 import { ToolOutput } from "../../tool-output.js"
 import { Plugin } from "../../plugin.js"
+import { PluginHooks } from "../../plugin/hooks.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
@@ -48,6 +49,7 @@ const layer = Layer.effect(
     const db = (yield* Database.Service).db
     const compaction = yield* SessionCompaction.Service
     const plugins = yield* Plugin.Service
+    const hooks = yield* PluginHooks.Service
     const title = yield* SessionTitle.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
@@ -240,6 +242,33 @@ const layer = Layer.effect(
           webSocket: "session",
           inputTokens: SessionCompaction.estimatePrompt(loaded),
         })
+        // Plugins steer compaction at the last safe boundary before the provider turn streams.
+        // A steered compaction reuses the safe compaction path; skipped when automatic compaction
+        // is off. Plugins own their cooldown: without one, a hook that always requests compaction
+        // re-fires on the rebuilt request and loops.
+        const steered = yield* hooks.trigger("session", "step", {
+          sessionID,
+          agent: loaded.agent.id,
+          step,
+          model: loaded.model.ref,
+          request: {
+            system: prepared.event.system,
+            messages: prepared.event.messages,
+            tools: prepared.event.tools,
+          },
+          entries: loaded.messages,
+        })
+        if (steered.result?.compact) {
+          const compacted = yield* compaction.compact({
+            reason: steered.result.reason ?? "plugin",
+            context: loaded,
+          })
+          if (compacted.status === "failed") return yield* new StepFailedError({ error: compacted.error })
+          if (compacted.status === "completed") {
+            assistantMessageID = SessionMessage.ID.create()
+            continue
+          }
+        }
         const outcome = yield* steps.attempt({
           isLocationClosed: lifecycle.isClosed,
           sessionID,
@@ -402,6 +431,7 @@ export const node = makeLocationNode({
     SessionStore.node,
     SessionCompaction.node,
     Plugin.node,
+    PluginHooks.node,
     SessionTitle.node,
     Snapshot.node,
     ToolOutput.node,
