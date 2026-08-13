@@ -1,6 +1,5 @@
 ---
 name: upgrade-xts
-description: Upgrade the xts build of opencode — fetch upstream, rebase the compact-suggest-mvp branch onto upstream/dev (resolving conflicts), find the latest upstream version, and build a local `-xts` binary. Use when the user asks to upgrade/rebuild xts opencode, bump the xts build, or rebase compact-suggest-mvp onto dev.
 ---
 
 # Upgrade xts Build
@@ -9,53 +8,32 @@ Remotes in this repo: `upstream` → anomalyco/opencode, `origin` → the fork (
 
 ## Workflow
 
-### 1. Fetch upstream
+Run the script from the repo root:
 
 ```bash
-git fetch upstream dev --tags
+bun run .opencode/skills/upgrade-xts/scripts/upgrade-xts.ts
 ```
 
-### 2. Rebase the feature branch onto upstream/dev
+The script:
 
-Make sure the current branch is `compact-suggest-mvp`; if not, switch to it. Then:
+1. Detects an in-progress rebase and resumes straight to the build phase.
+2. Otherwise switches to `compact-suggest-mvp` (only when the working tree is clean), fetches `upstream dev --tags`, skips the rebase when the branch already contains `upstream/dev`, and otherwise rebases it.
+3. Verifies the pinned bun version, runs `bun install`, reads the latest version from `upstream/dev`'s `packages/opencode/package.json`, and builds the xts binary with `OPENCODE_VERSION=<version>-xts`.
 
-```bash
-git rebase upstream/dev
-```
+It exits non-zero with the list of conflicted files if the rebase needs manual resolution.
 
-If conflicts arise, resolve them file by file:
+### On rebase conflicts
+
+Resolve them file by file:
 
 - Keep upstream's changes when the conflict is pure refactoring of code the branch never touched.
 - Keep the branch's feature logic when the conflict is between the xts feature and unrelated upstream churn; re-apply any upstream refactors around it.
 - After editing, `git add <file>` then `git rebase --continue`.
 - If the resolution becomes messy, `git rebase --abort` and inspect the two sides first.
 
+Then re-run the script; it resumes at the build phase.
+
 The branch is force-pushed to the fork only if the user asks to sync it: `git push --force-with-lease origin compact-suggest-mvp`.
-
-### 3. Install dependencies
-
-The rebase may have changed dependencies, so re-install before building:
-
-```bash
-bun install
-```
-
-### 4. Find the latest version tag on upstream/dev
-
-The version lives in `packages/opencode/package.json`; the matching tag is `v<version>`:
-
-```bash
-git show upstream/dev:packages/opencode/package.json | grep '"version"'
-git tag --sort=-creatordate --format='%(refname:short)' | head -5
-```
-
-Use the version from the tag (`v1.18.16` → `1.18.16`), not the `v26.x.x` or `github-*` tags.
-
-### 5. Build the xts binary
-
-```bash
-OPENCODE_VERSION=<version>-xts bun run packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui
-```
 
 Notes:
 
