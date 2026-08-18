@@ -1,7 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {},
-  "permission": {},
+  "permission": {
+    "external_directory": {
+      "~/.config/opencode/**": "allow",
+    },
+  },
   "references": {
     "effect": {
       "repository": "github.com/Effect-TS/effect-smol",
