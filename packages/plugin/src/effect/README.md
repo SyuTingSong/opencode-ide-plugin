@@ -144,6 +144,8 @@ yield *
 Setting `result` requests compaction. The engine reuses its safe compaction path at the boundary and re-runs the same
 step with compacted history; the reason is surfaced on the compaction events. Plugins own their cooldown: keep
 requesting from the last compaction anchor (a `compaction` entry in `event.entries`) so repeated requests cannot loop.
+For a model-requested variant — where the model calls a `suggest_compact` tool and the step hook evaluates the
+recorded signal against cooldown and a token gate — see [`packages/plugins/suggest-compact`](../../../plugins/suggest-compact/README.md).
 
 ## Reloading A Domain
 

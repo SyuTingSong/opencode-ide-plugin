@@ -563,6 +563,20 @@
         "@opencode/plugin": "^2.0.27 || ^0.0.0-dev",
       },
     },
+    "packages/plugins/suggest-compact": {
+      "name": "@opencode/plugin-suggest-compact",
+      "version": "2.0.28",
+      "devDependencies": {
+        "@opencode/plugin": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "1.4.0",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "effect": "catalog:",
+      },
+      "peerDependencies": {
+        "@opencode/plugin": "^2.0.27",
+      },
+    },
     "packages/posts": {
       "name": "@opencode/posts",
       "dependencies": {
@@ -2035,6 +2049,8 @@
     "@opencode/plugin-browser": ["@opencode/plugin-browser@workspace:packages/plugin-browser"],
 
     "@opencode/plugin-figma": ["@opencode/plugin-figma@workspace:packages/plugins/figma"],
+
+    "@opencode/plugin-suggest-compact": ["@opencode/plugin-suggest-compact@workspace:packages/plugins/suggest-compact"],
 
     "@opencode/posts": ["@opencode/posts@workspace:packages/posts"],
 
