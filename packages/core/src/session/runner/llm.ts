@@ -30,7 +30,6 @@ import { SessionStep } from "./step.js"
 import { ToolOutput } from "../../tool-output.js"
 import { Plugin } from "../../plugin.js"
 import { PluginHooks } from "../../plugin/hooks.js"
-import { CompactionSuggest } from "../compaction-suggest.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
@@ -51,7 +50,6 @@ const layer = Layer.effect(
     const compaction = yield* SessionCompaction.Service
     const plugins = yield* Plugin.Service
     const hooks = yield* PluginHooks.Service
-    const compactionSuggest = yield* CompactionSuggest.Service
     const title = yield* SessionTitle.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
@@ -271,19 +269,6 @@ const layer = Layer.effect(
             continue
           }
         }
-        const suggested = yield* compactionSuggest.consider(
-          sessionID,
-          step,
-          SessionCompaction.estimateContext(loaded),
-        )
-        if (suggested) {
-          const compacted = yield* compaction.compact({ reason: "suggest", context: loaded })
-          if (compacted.status === "completed") {
-            yield* compactionSuggest.compacted(sessionID, step)
-            assistantMessageID = SessionMessage.ID.create()
-            continue
-          }
-        }
         const outcome = yield* steps.attempt({
           isLocationClosed: lifecycle.isClosed,
           sessionID,
@@ -447,7 +432,6 @@ export const node = makeLocationNode({
     SessionCompaction.node,
     Plugin.node,
     PluginHooks.node,
-    CompactionSuggest.node,
     SessionTitle.node,
     Snapshot.node,
     ToolOutput.node,
