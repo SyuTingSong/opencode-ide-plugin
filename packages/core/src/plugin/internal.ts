@@ -68,7 +68,6 @@ import { Ripgrep } from "../ripgrep.js"
 import { Automation } from "../automation.js"
 import { Session } from "../session.js"
 import { SessionCompaction } from "../session/compaction.js"
-import { CompactionSuggest } from "../session/compaction-suggest.js"
 import { SessionInstructions } from "../session/instructions.js"
 import { SessionSearch } from "../session/search.js"
 import { SessionSearchBuild } from "../session/search-build.js"
@@ -97,7 +96,6 @@ import { ArtifactTools } from "../tool/plugin/artifact.js"
 import { AutomationTools } from "../tool/plugin/automation.js"
 import { SessionInterruptTool } from "../tool/plugin/session-interrupt.js"
 import { SessionSearchTools } from "../tool/plugin/session-search.js"
-import { SuggestCompactTool } from "../tool/plugin/suggest-compact.js"
 import { ShellTool } from "../tool/plugin/shell.js"
 import { SkillTool } from "../tool/plugin/skill.js"
 import { SubagentTool } from "../tool/plugin/subagent.js"
@@ -183,7 +181,6 @@ const nodes = [
   Automation.node,
   Session.node,
   SessionCompaction.node,
-  CompactionSuggest.node,
   SessionInstructions.node,
   SessionSearch.node,
   SessionSearchBuild.node,
@@ -249,7 +246,6 @@ const pre = [
   SessionInterruptTool.Plugin,
   SessionSearchTools.Plugin,
   ShellTool.Plugin,
-  SuggestCompactTool.Plugin,
   SkillTool.Plugin,
   SubagentTool.Plugin,
   CodeModeAgentsPlugin.Plugin,
