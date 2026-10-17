@@ -61,7 +61,6 @@ import { Ripgrep } from "../ripgrep.js"
 import { Schedule } from "../schedule.js"
 import { Session } from "../session.js"
 import { SessionCompaction } from "../session/compaction.js"
-import { CompactionSuggest } from "../session/compaction-suggest.js"
 import { SessionInstructions } from "../session/instructions.js"
 import { SubagentJob } from "../session/subagent-job.js"
 import { Shell } from "../shell.js"
@@ -81,7 +80,6 @@ import { QuestionTool } from "../tool/plugin/question.js"
 import { ReadToolFileSystem } from "../tool/read-filesystem.js"
 import { ReadTool } from "../tool/plugin/read.js"
 import { ScheduleTools } from "../tool/plugin/schedule.js"
-import { SuggestCompactTool } from "../tool/plugin/suggest-compact.js"
 import { ShellTool } from "../tool/plugin/shell.js"
 import { SkillTool } from "../tool/plugin/skill.js"
 import { SubagentTool } from "../tool/plugin/subagent.js"
@@ -150,7 +148,6 @@ const services = [
   Schedule.Service,
   Session.Service,
   SessionCompaction.Service,
-  CompactionSuggest.Service,
   SessionInstructions.Service,
   SubagentJob.Service,
   Shell.Service,
@@ -206,7 +203,6 @@ export const requirements = LayerNode.group([
   Schedule.node,
   Session.node,
   SessionCompaction.node,
-  CompactionSuggest.node,
   SessionInstructions.node,
   SubagentJob.node,
   Shell.node,
@@ -255,7 +251,6 @@ const pre = [
   ReadTool.Plugin,
   ScheduleTools.Plugin,
   ShellTool.Plugin,
-  SuggestCompactTool.Plugin,
   SkillTool.Plugin,
   SubagentTool.Plugin,
   TodoTool.Plugin,
