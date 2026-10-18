@@ -246,7 +246,7 @@ const layer = Layer.effect(
         // A steered compaction reuses the safe compaction path; skipped when automatic compaction
         // is off. Plugins own their cooldown: without one, a hook that always requests compaction
         // re-fires on the rebuilt request and loops.
-        const steered = yield* hooks.trigger("session", "step", {
+        const stepRequest = {
           sessionID,
           agent: loaded.agent.id,
           step,
@@ -257,7 +257,17 @@ const layer = Layer.effect(
             tools: prepared.event.tools,
           },
           entries: loaded.messages,
-        })
+        }
+        // An untrusted plugin must not turn a suggestion error into a session failure: a failing
+        // hook abstains (drops anything it may have set and lets this turn stream unchanged).
+        const steered = yield* hooks.trigger("session", "step", stepRequest).pipe(
+          Effect.catchCause((cause) => {
+            if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
+            return Effect.logWarning("session step hook failed; ignoring suggestion", { sessionID, step, cause }).pipe(
+              Effect.as({ ...stepRequest, result: undefined }),
+            )
+          }),
+        )
         if (steered.result?.compact) {
           const compacted = yield* compaction.compact({
             reason: steered.result.reason ?? "plugin",

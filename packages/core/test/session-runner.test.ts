@@ -3253,6 +3253,20 @@ describe("SessionRunnerLLM", () => {
     ])
   })
 
+  scenario("a failing step hook abstains instead of failing the step", function* (s) {
+    const hooks = yield* PluginHooks.Service
+    // Voters are untrusted plugins: a throwing voter must drop its vote and let the turn stream.
+    yield* hooks.register("session", "step", () => Effect.die(new Error("voter exploded")))
+    yield* s.llm.push(TestLLM.text("Earlier answer", "text-hook-death"))
+    yield* s.runPrompt("Question with a broken voter")
+
+    expect(s.requests).toHaveLength(1)
+    expect(userTexts(s.requests[0]).at(-1)).toContain("Question with a broken voter")
+    const context = yield* s.messages
+    expect(context.filter((message) => message.type === "compaction")).toHaveLength(0)
+    expect(context.map((message) => message.type)).toContain("assistant")
+  })
+
   scenario("automatically persists native windows, retains earlier users, and waits for fresh usage", function* (s) {
     s.currentModel = LanguageModel.make({ id: "native", provider: "openai", route: OpenAIResponses.route })
     modelLimits.set("native", { context: 11_000, output: 1_000 })
