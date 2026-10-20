@@ -32,9 +32,13 @@ export default define({
     const minTokens = envNumber("OPENCODE_SUGGEST_MIN_TOKENS", DEFAULT_MIN_TOKENS)
     const cooldownSteps = envNumber("OPENCODE_SUGGEST_COOLDOWN_STEPS", DEFAULT_COOLDOWN_STEPS)
     const pending = yield* Ref.make(new Map<string, string>())
+    // `event.step` is run-local: every drain restarts it at 1 and promoting new
+    // user input resets it, so cooldown is measured against this per-session
+    // monotonic counter of hook invocations instead.
+    const stepCounts = yield* Ref.make(new Map<string, number>())
     // Cooldown anchors derive from history compaction entries: the boundary
     // where a new anchor identity first appears starts the cooldown window.
-    const anchors = yield* Ref.make(new Map<string, { compactionID: string; step: number }>())
+    const anchors = yield* Ref.make(new Map<string, { compactionID: string; stepCount: number }>())
 
     yield* ctx.tool
       .transform((editor) =>
@@ -64,6 +68,12 @@ export default define({
 
     yield* ctx.session.hook("step", (event) =>
       Effect.gen(function* () {
+        const stepCount = yield* Ref.modify(stepCounts, (map) => {
+          const count = (map.get(event.sessionID) ?? 0) + 1
+          const next = new Map(map)
+          next.set(event.sessionID, count)
+          return [count, next] as const
+        })
         // Leave an already-requested compaction alone and keep any pending signal.
         if (event.result?.compact) return
         // A rejected suggestion is consumed; the model may suggest again later.
@@ -83,7 +93,7 @@ export default define({
             ? previous
             : compaction === undefined
               ? undefined
-              : { compactionID: compaction.id, step: event.step }
+              : { compactionID: compaction.id, stepCount }
         if (anchor !== previous) {
           yield* Ref.update(anchors, (map) => {
             const next = new Map(map)
@@ -93,16 +103,17 @@ export default define({
           })
         }
 
-        const lastCompactStep = anchor?.step
+        const lastCompactCount = anchor?.stepCount
         const estTokens = estimateTokens(event)
-        const inCooldown = lastCompactStep !== undefined && event.step - lastCompactStep < cooldownSteps
+        const inCooldown = lastCompactCount !== undefined && stepCount - lastCompactCount < cooldownSteps
         const approved = !inCooldown && estTokens >= minTokens
         yield* Effect.logInfo("suggest_compact evaluated", {
           sessionID: event.sessionID,
           step: event.step,
+          stepCount,
           estTokens,
           approved,
-          lastCompactStep,
+          lastCompactCount,
           reason,
         })
         if (!approved) return
