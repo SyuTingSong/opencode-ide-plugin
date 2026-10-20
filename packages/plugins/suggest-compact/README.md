@@ -37,8 +37,10 @@ The plugin is not activated merely by being present in the repository. Installin
   1. If compaction was already requested at this boundary, the pending signal is preserved.
   2. The pending suggestion is consumed.
   3. Cooldown: history compaction entries anchor the window. When the last compaction entry's
-     identity changes, the anchor step resets to the current boundary; suggestions within
-     `cooldownSteps` of the anchor are rejected.
+     identity changes, the anchor resets to the current boundary; suggestions within
+     `cooldownSteps` of the anchor are rejected. The window is measured against a per-session
+     monotonic counter of step-hook invocations, because `event.step` is run-local (every drain
+     restarts it at 1) and comparing run-local numbers across runs stays negative forever.
   4. Economic gate: the offered request is estimated by its serialized length (`bytes / 4`);
      below `minTokens` the suggestion is rejected.
   5. Approved suggestions request compaction with reason `"suggest"`, reusing the engine's safe
