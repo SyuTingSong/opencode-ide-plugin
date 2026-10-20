@@ -141,13 +141,34 @@ describe("suggest-compact", () => {
     await record(host, "lost to the old cooldown")
     await boundary(host, step({ n: 3, chars: 1_000, entries: [compactionEntry("msg_old")] }))
 
-    // Without a reset the distance from step 3 would exceed the cooldown.
+    // Without a reset the distance from the old anchor would exceed the cooldown.
     await record(host, "fresh cooldown")
     let event = await boundary(host, step({ n: 12, chars: 1_000, entries: [compactionEntry("msg_new")] }))
     expect(event.result?.compact).toBeUndefined()
 
+    // The counter keeps ticking on boundaries without a pending suggestion.
+    await boundary(host, step({ n: 13, chars: 1_000, entries: [compactionEntry("msg_new")] }))
+
     await record(host, "window passed")
     event = await boundary(host, step({ n: 14, chars: 1_000, entries: [compactionEntry("msg_new")] }))
+    expect(event.result).toEqual({ compact: true, reason: "suggest" })
+  })
+
+  test("cooldown survives run boundaries despite run-local step numbers", async () => {
+    const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
+
+    // Run A: the hook anchors the observed compaction at its run-local step 4.
+    await record(host, "anchor in run A")
+    await boundary(host, step({ n: 4, chars: 1_000, entries: [compactionEntry("msg_c")] }))
+
+    // Run B restarts at step 1; comparing run-local numbers gives 2 - 4 = -2,
+    // which held the suggestion in cooldown forever.
+    await record(host, "suggested in run B")
+    let event = await boundary(host, step({ n: 1, chars: 1_000, entries: [compactionEntry("msg_c")] }))
+    expect(event.result?.compact).toBeUndefined()
+
+    await record(host, "window passed in run B")
+    event = await boundary(host, step({ n: 2, chars: 1_000, entries: [compactionEntry("msg_c")] }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
 
