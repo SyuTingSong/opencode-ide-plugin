@@ -3,7 +3,7 @@
 import { $ } from "bun"
 import { resolve } from "path"
 
-const branch = "compact-suggest-mvp"
+const branch = "suggest-compact"
 const root = resolve(import.meta.dir, "../../../..")
 
 const inRebase =
@@ -59,15 +59,13 @@ if (pinnedBun !== actualBun) {
 
 await $`bun install`.cwd(root)
 
-const version = JSON.parse(
-  (await $`git show upstream/dev:packages/opencode/package.json`.cwd(root).quiet().text()),
-).version
+const version = JSON.parse((await $`git show upstream/dev:package.json`.cwd(root).quiet().text())).version
 console.log(`Building xts binary for v${version}`)
 
-await $`bun run packages/opencode/script/build.ts --single --skip-install --skip-embed-web-ui`
+await $`bun run packages/cli/script/build.ts --single --skip-install --skip-web-ui`
   .env({ ...process.env, OPENCODE_VERSION: `${version}-xts` })
   .cwd(root)
 
 const os = process.platform === "win32" ? "windows" : process.platform
-const binary = resolve(root, `packages/opencode/dist/opencode-${os}-${process.arch}/bin/opencode`)
+const binary = resolve(root, `packages/cli/dist/cli-${os}-${process.arch}/bin/opencode`)
 console.log(`Binary: ${binary}`)
