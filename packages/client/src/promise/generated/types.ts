@@ -1508,7 +1508,7 @@ export type SessionCompactionStarted = {
   type: "session.compaction.started"
   durable: { aggregateID: string; seq: EventSeq; version: 1 }
   location?: LocationRef
-  data: { sessionID: SessionID; reason: "auto" | "manual" | (string & {}); recent: string; inputID?: SessionMessageID }
+  data: { sessionID: SessionID; reason: "auto" | "manual" | (string & {}); inputID?: SessionMessageID }
 }
 
 export type SessionCompactionEnded = {
