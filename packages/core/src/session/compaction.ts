@@ -894,7 +894,6 @@ export const layer = Layer.effect(
         usageOutputTokens: usage?.tokens.output,
         contextTokens: estimateContext(context),
         summaryTokens: Token.estimate(outcome.text),
-        recentTokens: Token.estimate(outcome.recent),
       })
 
       yield* bus.publish(
