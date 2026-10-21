@@ -1306,7 +1306,6 @@ export type ExperimentalSessionLogOutput =
           readonly data: {
             readonly sessionID: Session.ID
             readonly reason: "auto" | "manual" | string
-            readonly recent: string
             readonly inputID?: SessionMessage.ID | undefined
           }
         }
