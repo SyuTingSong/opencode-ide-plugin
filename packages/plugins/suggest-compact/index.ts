@@ -32,13 +32,6 @@ export default define({
     const minTokens = envNumber("OPENCODE_SUGGEST_MIN_TOKENS", DEFAULT_MIN_TOKENS)
     const cooldownSteps = envNumber("OPENCODE_SUGGEST_COOLDOWN_STEPS", DEFAULT_COOLDOWN_STEPS)
     const pending = yield* Ref.make(new Map<string, string>())
-    // `event.step` is run-local: every drain restarts it at 1 and promoting new
-    // user input resets it, so cooldown is measured against this per-session
-    // monotonic counter of hook invocations instead.
-    const stepCounts = yield* Ref.make(new Map<string, number>())
-    // Cooldown anchors derive from history compaction entries: the boundary
-    // where a new anchor identity first appears starts the cooldown window.
-    const anchors = yield* Ref.make(new Map<string, { compactionID: string; stepCount: number }>())
 
     yield* ctx.tool
       .transform((editor) =>
@@ -68,12 +61,6 @@ export default define({
 
     yield* ctx.session.hook("step", (event) =>
       Effect.gen(function* () {
-        const stepCount = yield* Ref.modify(stepCounts, (map) => {
-          const count = (map.get(event.sessionID) ?? 0) + 1
-          const next = new Map(map)
-          next.set(event.sessionID, count)
-          return [count, next] as const
-        })
         // Leave an already-requested compaction alone and keep any pending signal.
         if (event.result?.compact) return
         // A rejected suggestion is consumed; the model may suggest again later.
@@ -86,34 +73,27 @@ export default define({
         })
         if (reason === undefined) return
 
-        const previous = (yield* Ref.get(anchors)).get(event.sessionID)
-        const compaction = event.entries.findLast((entry) => entry.type === "compaction")
-        const anchor =
-          previous !== undefined && (compaction === undefined || previous.compactionID === compaction.id)
-            ? previous
-            : compaction === undefined
-              ? undefined
-              : { compactionID: compaction.id, stepCount }
-        if (anchor !== previous) {
-          yield* Ref.update(anchors, (map) => {
-            const next = new Map(map)
-            if (anchor === undefined) next.delete(event.sessionID)
-            else next.set(event.sessionID, anchor)
-            return next
-          })
-        }
-
-        const lastCompactCount = anchor?.stepCount
+        // Cooldown counts provider steps recorded after the last completed
+        // compaction entry, derived from history on every boundary. Anchoring on
+        // an in-memory counter stamped when a suggestion happens to be observed
+        // measures distance zero and rejects the first post-compaction
+        // suggestion, and loses the window entirely across a server restart.
+        const lastCompactionIndex = event.entries.findLastIndex(
+          (entry) => entry.type === "compaction" && entry.status === "completed",
+        )
+        const stepsSinceCompaction =
+          lastCompactionIndex === -1
+            ? undefined
+            : event.entries.slice(lastCompactionIndex + 1).filter((entry) => entry.type === "assistant").length
         const estTokens = estimateTokens(event)
-        const inCooldown = lastCompactCount !== undefined && stepCount - lastCompactCount < cooldownSteps
+        const inCooldown = stepsSinceCompaction !== undefined && stepsSinceCompaction < cooldownSteps
         const approved = !inCooldown && estTokens >= minTokens
         yield* Effect.logInfo("suggest_compact evaluated", {
           sessionID: event.sessionID,
           step: event.step,
-          stepCount,
           estTokens,
           approved,
-          lastCompactCount,
+          stepsSinceCompaction,
           reason,
         })
         if (!approved) return
