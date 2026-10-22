@@ -83,7 +83,16 @@ const boundary = async (host: Awaited<ReturnType<typeof boot>>, event: SessionSt
   return event
 }
 
-const compactionEntry = (id: string) => ({ type: "compaction", id, time: { created: 0 } })
+const compactionEntry = (id: string, status = "completed") => ({ type: "compaction", id, status, time: { created: 0 } })
+
+const assistantEntry = (id: string) => ({ type: "assistant", id, time: { created: 0 } })
+
+/** A projected history: the compaction anchor followed by `steps` provider steps. */
+const after = (compactionID: string, steps: number, ...tail: ReadonlyArray<unknown>) => [
+  compactionEntry(compactionID),
+  ...Array.from({ length: steps }, (_, i) => assistantEntry(`msg_step${i}`)),
+  ...tail,
+]
 
 describe("suggest-compact", () => {
   test("boot registers the tool and the step hook", async () => {
@@ -124,51 +133,64 @@ describe("suggest-compact", () => {
   test("rejects during cooldown and approves once the window passes", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
 
-    await record(host, "anchor observation")
-    await boundary(host, step({ n: 3, chars: 1_000, entries: [compactionEntry("msg_old")] }))
     await record(host, "too soon")
-    let event = await boundary(host, step({ n: 4, chars: 1_000, entries: [compactionEntry("msg_old")] }))
+    let event = await boundary(host, step({ n: 4, chars: 1_000, entries: after("msg_c", 1) }))
     expect(event.result?.compact).toBeUndefined()
 
     await record(host, "window passed")
-    event = await boundary(host, step({ n: 5, chars: 1_000, entries: [compactionEntry("msg_old")] }))
+    event = await boundary(host, step({ n: 5, chars: 1_000, entries: after("msg_c", 2) }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
 
-  test("resets the cooldown anchor when the compaction identity changes", async () => {
+  test("approves the first suggestion observed after a compaction", async () => {
+    // The anchor is derived from the offered history on every boundary, so the
+    // first post-compaction suggestion measures the real elapsed steps instead
+    // of a counter stamped at observation (which always saw distance zero).
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
 
-    await record(host, "lost to the old cooldown")
-    await boundary(host, step({ n: 3, chars: 1_000, entries: [compactionEntry("msg_old")] }))
-
-    // Without a reset the distance from the old anchor would exceed the cooldown.
-    await record(host, "fresh cooldown")
-    let event = await boundary(host, step({ n: 12, chars: 1_000, entries: [compactionEntry("msg_new")] }))
-    expect(event.result?.compact).toBeUndefined()
-
-    // The counter keeps ticking on boundaries without a pending suggestion.
-    await boundary(host, step({ n: 13, chars: 1_000, entries: [compactionEntry("msg_new")] }))
-
-    await record(host, "window passed")
-    event = await boundary(host, step({ n: 14, chars: 1_000, entries: [compactionEntry("msg_new")] }))
+    await record(host, "first after compaction")
+    const event = await boundary(host, step({ n: 9, chars: 1_000, entries: after("msg_c", 4) }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
 
-  test("cooldown survives run boundaries despite run-local step numbers", async () => {
+  test("a fresh compaction entry restarts the cooldown window", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
 
-    // Run A: the hook anchors the observed compaction at its run-local step 4.
-    await record(host, "anchor in run A")
-    await boundary(host, step({ n: 4, chars: 1_000, entries: [compactionEntry("msg_c")] }))
+    await record(host, "old window expired")
+    let event = await boundary(host, step({ n: 12, chars: 1_000, entries: after("msg_old", 5) }))
+    expect(event.result).toEqual({ compact: true, reason: "suggest" })
 
-    // Run B restarts at step 1; comparing run-local numbers gives 2 - 4 = -2,
-    // which held the suggestion in cooldown forever.
-    await record(host, "suggested in run B")
-    let event = await boundary(host, step({ n: 1, chars: 1_000, entries: [compactionEntry("msg_c")] }))
+    await record(host, "new compaction reset the window")
+    event = await boundary(host, step({ n: 13, chars: 1_000, entries: after("msg_new", 0) }))
+    expect(event.result?.compact).toBeUndefined()
+  })
+
+  test("measures cooldown from history, so a restart keeps the window", async () => {
+    const first = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
+    await record(first, "observed in run A")
+    await boundary(first, step({ n: 4, chars: 1_000, entries: after("msg_c", 1) }))
+
+    // A restarted plugin instance has empty in-memory state, yet the same
+    // history yields the same window regardless of run-local step numbers.
+    const restarted = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
+    await record(restarted, "suggested after restart")
+    let event = await boundary(restarted, step({ n: 1, chars: 1_000, entries: after("msg_c", 1) }))
     expect(event.result?.compact).toBeUndefined()
 
-    await record(host, "window passed in run B")
-    event = await boundary(host, step({ n: 2, chars: 1_000, entries: [compactionEntry("msg_c")] }))
+    await record(restarted, "window passed")
+    event = await boundary(restarted, step({ n: 1, chars: 1_000, entries: after("msg_c", 2) }))
+    expect(event.result).toEqual({ compact: true, reason: "suggest" })
+  })
+
+  test("anchors on the last completed compaction, ignoring failures", async () => {
+    const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
+
+    await record(host, "failed compaction does not anchor")
+    const event = await boundary(host, step({
+      n: 6,
+      chars: 1_000,
+      entries: [...after("msg_old", 4), compactionEntry("msg_failed", "failed"), assistantEntry("msg_latest")],
+    }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
 
