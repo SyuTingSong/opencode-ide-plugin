@@ -17,8 +17,9 @@ bun run .opencode/skills/upgrade-xts/scripts/upgrade-xts.ts
 The script:
 
 1. Detects an in-progress rebase and resumes straight to the build phase.
-2. Otherwise switches to `compact-suggest-mvp` (only when the working tree is clean), fetches `upstream dev --tags`, skips the rebase when the branch already contains `upstream/dev`, and otherwise rebases it.
+2. Otherwise switches to `suggest-compact` (only when the working tree is clean), fetches `upstream dev --tags`, skips the rebase when the branch already contains `upstream/dev`, and otherwise rebases it.
 3. Verifies the pinned bun version, runs `bun install`, reads the latest version from `upstream/dev`'s root `package.json`, and builds the xts binary with `OPENCODE_VERSION=<version>-xts`.
+4. Points `~/.bin/opencode` at the fresh binary (`mkdir -p ~/.bin` then `ln -sfnh`).
 
 It exits non-zero with the list of conflicted files if the rebase needs manual resolution.
 
@@ -37,7 +38,7 @@ The branch is force-pushed to the fork only if the user asks to sync it: `git pu
 
 Notes:
 
-- The build script requires the exact bun version pinned in the root `package.json` (`packageManager` field).
+- The build script requires the exact bun version pinned in the root `package.json` (`packageManager` field). When bun is managed by proto, `bun upgrade` fails; use `proto install bun <pinned-version> --pin` instead.
 - The resulting binary is at `packages/cli/dist/cli-<os>-<arch>/bin/opencode` and a smoke test runs `--version` on it, which must print `opencode v<version>-xts`.
 - `--single` builds only the current platform; `--skip-install` and `--skip-web-ui` skip the cross-platform binary installs and the web UI embed, respectively.
 - Do not use `OPENCODE_CHANNEL` or `OPENCODE_BUMP` — the plain `OPENCODE_VERSION` env var is the only override needed.

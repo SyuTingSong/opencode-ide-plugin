@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun"
-import { resolve } from "path"
+import { homedir } from "os"
+import { dirname, resolve } from "path"
 
 const branch = "suggest-compact"
 const root = resolve(import.meta.dir, "../../../..")
@@ -68,4 +69,9 @@ await $`bun run packages/cli/script/build.ts --single --skip-install --skip-web-
 
 const os = process.platform === "win32" ? "windows" : process.platform
 const binary = resolve(root, `packages/cli/dist/cli-${os}-${process.arch}/bin/opencode`)
-console.log(`Binary: ${binary}`)
+
+// point ~/.bin/opencode at the fresh binary
+const link = resolve(homedir(), ".bin/opencode")
+await $`mkdir -p ${dirname(link)}`.quiet()
+await $`ln -sfnh ${binary} ${link}`
+console.log(`Symlink updated: ${link} -> ${binary}`)
