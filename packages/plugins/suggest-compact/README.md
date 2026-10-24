@@ -28,9 +28,23 @@ The plugin is not activated merely by being present in the repository. Installin
 
 ## Behavior
 
-- Registers the `suggest_compact` tool. Calling it records a suggestion with a free-form
-  `reason`; the suggestion is latest-wins and one-shot. A rejected suggestion (cooldown or
-  economic gate) is dropped, and the model may suggest again later.
+- Registers the `suggest_compact` tool **on the provider's native tool list**
+  (`options: { codemode: false }`). Tools registered without this option default
+  into the Code Mode catalog, where they surface only as one entry among MCP
+  tools and can only be called through the `execute` tool — in practice that
+  keeps them out of the model's line of sight, so stage boundaries pass without
+  a call. On the native list the full description is visible on every request.
+- The description is written as observable events, not an abstract concept: it
+  names the closing events that count (deliverable merged/verified, delegated
+  task verified, next step is a different topic or repo, user moves on), the
+  anti-cases (waiting on background results, mid-debugging or mid-review, too
+  soon after the last compaction), and binds the check to the turn that reports
+  the result — call it in that same turn, not the next one.
+- Calling it records a suggestion with a free-form `reason`; the suggestion is
+  latest-wins and one-shot. A rejected suggestion (cooldown or economic gate)
+  is dropped, and the model may suggest again later. The tool result tells the
+  model the system decides at the next safe boundary, so a quiet boundary after
+  a rejected suggestion does not read as failure.
 - Evaluates the recorded suggestion at every safe step boundary through the session step hook,
   before the next provider turn streams:
 
