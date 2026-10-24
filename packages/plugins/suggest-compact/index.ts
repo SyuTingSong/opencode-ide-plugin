@@ -37,11 +37,15 @@ export default define({
       .transform((editor) =>
         editor.add({
           name: "suggest_compact",
+          // Without options, a plugin tool defaults into the Code Mode catalog
+          // and is callable only through `execute`; keep this one native.
+          options: { codemode: false },
           description:
-            "Suggest that the current session context be compacted because a logical stage of work has finished. Provide the reason.",
+            "Suggest compacting this session's context at a stage boundary: the moment the work just finished will not be needed in detail for what comes next. Check this at the END of every turn where you report a result, and call it in that same turn, alongside the report — not on the next turn. Trigger when ANY of these just happened: a deliverable was closed (MR/PR merged, pushed and verified, a document finalized, a migration step completed); a delegated task (subagent, dispatched session) returned and you finished verifying it; the next step is a different topic, repository, directory, or phase; the user moves on (\"next\", \"now do X\", a new unrelated request). Do NOT trigger while waiting on background work whose result must be checked against details only in this context, mid-debugging or mid-review with unapplied findings, or when compaction happened only a few turns ago. Self-check: if this session restarted now with a 10-line summary plus the files, MRs and plans on disk, could you do the next step without loss? If yes, call this tool. The engine evaluates the suggestion at the next safe step boundary; recording it is enough.",
           input: Schema.Struct({
             reason: Schema.String.annotate({
-              description: "Why this is a stage boundary and old context is dead weight",
+              description:
+                "Name the stage that ended, pointers worth carrying (MR links, commit hashes, file paths, pending user decisions), and the next step",
             }),
           }),
           output: Schema.Struct({ received: Schema.Boolean }),
@@ -53,7 +57,13 @@ export default define({
                 return next
               })
               yield* Effect.logInfo("suggest_compact requested", { sessionID: context.sessionID, reason })
-              return { output: { received: true }, content: "Compaction suggestion recorded." }
+              // Compaction is decided later by the engine (cooldown and token
+              // gates); the model must not read a quiet step as a rejection.
+              return {
+                output: { received: true },
+                content:
+                  "Compaction suggestion recorded; the system evaluates it at the next safe step boundary and may not act on it. Do not suggest again for the same stage.",
+              }
             }),
         }),
       )

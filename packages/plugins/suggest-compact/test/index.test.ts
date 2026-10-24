@@ -99,6 +99,11 @@ describe("suggest-compact", () => {
     const host = await boot()
     expect(suggestCompact.id).toBe("suggest-compact")
     expect(host.tools.has("suggest_compact")).toBe(true)
+    // Native tool list (not the Code Mode catalog), so the description is fully
+    // visible and callable without routing through `execute`.
+    expect((host.tools.get("suggest_compact") as { options?: { codemode: boolean } }).options).toEqual({
+      codemode: false,
+    })
     expect(host.stepHooks).toHaveLength(1)
   })
 
