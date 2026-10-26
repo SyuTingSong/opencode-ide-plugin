@@ -20,9 +20,9 @@ const envNumber = (name: string, fallback: number) => {
 }
 
 /**
- * The engine's `estimateContext()` is anchored on provider-reported usage of
- * the latest response; the step hook only offers the built request, so this is
- * a pure heuristic with documented precision loss.
+ * Fallback for cores whose `SessionStep` predates `contextTokens`: the
+ * serialized request divided by four. English-shaped and blind to CJK, so the
+ * engine's own estimate is preferred whenever the event carries it.
  */
 const estimateTokens = (event: SessionStep) => Math.round(JSON.stringify(event.request).length / 4)
 
@@ -95,7 +95,7 @@ export default define({
           lastCompactionIndex === -1
             ? undefined
             : event.entries.slice(lastCompactionIndex + 1).filter((entry) => entry.type === "assistant").length
-        const estTokens = estimateTokens(event)
+        const estTokens = event.contextTokens ?? estimateTokens(event)
         const inCooldown = stepsSinceCompaction !== undefined && stepsSinceCompaction < cooldownSteps
         const approved = !inCooldown && estTokens >= minTokens
         yield* Effect.logInfo("suggest_compact evaluated", {

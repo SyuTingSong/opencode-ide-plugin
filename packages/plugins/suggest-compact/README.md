@@ -55,8 +55,8 @@ The plugin is not activated merely by being present in the repository. Installin
       every boundary keeps the count exact across server restarts, and a suggestion is never
       rejected merely for being the first one observed after a compaction. A failed compaction
       does not start a window.
-  4. Economic gate: the offered request is estimated by its serialized length (`bytes / 4`);
-     below `minTokens` the suggestion is rejected.
+  4. Economic gate: the boundary's `contextTokens` — the engine's own context estimate, the same
+      number the automatic compaction gate reads — below `minTokens` rejects the suggestion.
   5. Approved suggestions request compaction with reason `"suggest"`, reusing the engine's safe
      compaction path. The model's semantic reason only surfaces in logs.
 
@@ -69,7 +69,8 @@ The plugin is not activated merely by being present in the repository. Installin
 
 ## Precision
 
-The core version anchored its estimate on provider-reported usage at the latest response. The
-step hook only offers the built request, so this plugin estimates from the serialized request;
-expect drift against provider billing. Extending `SessionStep` with model-limit fields would
-restore exact numbers but needs core changes beyond this plugin.
+The gate reads `SessionStep.contextTokens`, the engine's own context estimate: provider-reported
+usage at the latest measured response plus a local estimate of the unmeasured tail. Before any
+measured response exists (session start, after a model switch) that number is a whole-request
+char estimate. On cores whose `SessionStep` predates the field, the plugin falls back to
+estimating from the serialized request, which undercounts CJK-heavy sessions by design.
