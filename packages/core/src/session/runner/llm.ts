@@ -254,7 +254,6 @@ const layer = Layer.effect(
           initial: loaded.initial,
           messages: loaded.messages,
         })
-<<<<<<< HEAD
         const prepared = yield* context.request
           .primary({
             session: loaded.session,
@@ -287,6 +286,9 @@ const layer = Layer.effect(
                   tools: primary.event.tools,
                 },
                 entries: loaded.messages,
+                // The engine's own context estimate, the same number the automatic
+                // compaction gate reads; offered so plugins need not re-estimate.
+                contextTokens: estimate.measured + estimate.estimated,
               }
               return hooks
                 .trigger("session", "step", stepRequest)
@@ -315,49 +317,6 @@ const layer = Layer.effect(
             }),
           )
         if (prepared.steered.result?.compact) {
-=======
-        const prepared = yield* context.request.primary({
-          session: loaded.session,
-          agent: loaded.agent.id,
-          model: loaded.model,
-          tools: loaded.tools,
-          system: transcript.system,
-          messages: stepLimitReached
-            ? [...transcript.messages, Message.assistant(MAX_STEPS_PROMPT)]
-            : transcript.messages,
-          // Keep tool definitions on the final Step to preserve the provider's cached prefix.
-          toolChoice: stepLimitReached ? "none" : undefined,
-          webSocket: "session",
-          inputTokens: SessionCompaction.estimatePrompt(loaded),
-        })
-        // Plugins steer compaction at the last safe boundary before the provider turn streams.
-        // A steered compaction reuses the safe compaction path; skipped when automatic compaction
-        // is off. Plugins own their cooldown: without one, a hook that always requests compaction
-        // re-fires on the rebuilt request and loops.
-        const stepRequest = {
-          sessionID,
-          agent: loaded.agent.id,
-          step,
-          model: loaded.model.ref,
-          request: {
-            system: prepared.event.system,
-            messages: prepared.event.messages,
-            tools: prepared.event.tools,
-          },
-          entries: loaded.messages,
-        }
-        // An untrusted plugin must not turn a suggestion error into a session failure: a failing
-        // hook abstains (drops anything it may have set and lets this turn stream unchanged).
-        const steered = yield* hooks.trigger("session", "step", stepRequest).pipe(
-          Effect.catchCause((cause) => {
-            if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
-            return Effect.logWarning("session step hook failed; ignoring suggestion", { sessionID, step, cause }).pipe(
-              Effect.as({ ...stepRequest, result: undefined }),
-            )
-          }),
-        )
-        if (steered.result?.compact) {
->>>>>>> a100cab7 (fix(core): a failing session step hook abstains instead of failing the step)
           const compacted = yield* compaction.compact({
             reason: prepared.steered.result.reason ?? "plugin",
             context: loaded,

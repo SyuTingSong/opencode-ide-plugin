@@ -61,6 +61,7 @@ const suggestion: { compact: true; reason: string } = { compact: true, reason: "
 const step = (overrides: {
   n: number
   chars?: number
+  contextTokens?: number
   entries?: ReadonlyArray<unknown>
   result?: { compact: true; reason: string }
 }): SessionStep =>
@@ -74,6 +75,8 @@ const step = (overrides: {
       messages: [],
       tools: {},
     },
+    // The engine's estimate; chars / 4 keeps the legacy heuristic meaning of `chars`.
+    contextTokens: overrides.contextTokens ?? Math.round((overrides.chars ?? 0) / 4),
     entries: overrides.entries ?? [],
     result: overrides.result,
   }) as unknown as SessionStep
@@ -133,6 +136,31 @@ describe("suggest-compact", () => {
 
     event = await boundary(host, step({ n: 2, chars: 10_000 }))
     expect(event.result?.compact).toBeUndefined()
+  })
+
+  test("gates on the engine's context estimate, not the serialized request", async () => {
+    const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "1000" })
+    await record(host, "engine number decides")
+
+    // 40k chars would read as ~10k tokens under the serialized-length heuristic;
+    // the engine's number says 900 and must decide.
+    let event = await boundary(host, step({ n: 1, chars: 40_000, contextTokens: 900 }))
+    expect(event.result?.compact).toBeUndefined()
+
+    await record(host, "small request, large context")
+    event = await boundary(host, step({ n: 2, chars: 40, contextTokens: 1_500 }))
+    expect(event.result).toEqual({ compact: true, reason: "suggest" })
+  })
+
+  test("falls back to the serialized request when the core predates contextTokens", async () => {
+    const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "1000" })
+    await record(host, "legacy core")
+
+    const event = await boundary(host, {
+      ...step({ n: 1, chars: 10_000 }),
+      contextTokens: undefined,
+    } as unknown as SessionStep)
+    expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
 
   test("rejects during cooldown and approves once the window passes", async () => {

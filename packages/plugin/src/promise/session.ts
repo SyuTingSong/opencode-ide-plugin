@@ -197,10 +197,13 @@ export interface SessionHooks {
 
 /**
  * Snapshot of the next provider turn at a safe step boundary, offered before
- * the engine streams it. Plugins estimate token counts from the built request
- * and derive plan transitions, tool-output ratios, and the last compaction
- * anchor from the projected history entries. The offered request is
- * reflect-only; unlike earlier session hooks, edits are not applied.
+ * the engine streams it. `contextTokens` is the engine's own context estimate
+ * (provider-reported usage at the latest measured response plus the unmeasured
+ * tail) — the same number the automatic compaction gate reads — so plugins
+ * gate on it instead of re-estimating from the built request. Plan
+ * transitions, tool-output ratios, and the last compaction anchor still come
+ * from the projected history entries. The offered request is reflect-only;
+ * unlike earlier session hooks, edits are not applied.
  */
 export interface SessionStep {
   readonly sessionID: Session.ID
@@ -214,6 +217,12 @@ export interface SessionStep {
     readonly messages: readonly Message[]
     readonly tools: Readonly<Record<string, { description: string; input: JsonSchema.JsonSchema }>>
   }
+  /**
+   * The engine's context estimate at this boundary, in tokens. Before any
+   * measured response exists (session start, after a model switch) it is a
+   * whole-request char estimate rather than a provider-measured value.
+   */
+  readonly contextTokens: number
   /**
    * The projected history visible at this boundary, oldest first. Compaction
    * messages serve as cooldown anchors; tool-call parts (e.g. todowrite) live
