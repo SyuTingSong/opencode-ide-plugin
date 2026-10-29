@@ -40,7 +40,7 @@ The plugin is not activated merely by being present in the repository. Installin
   anti-cases (waiting on background results, mid-debugging or mid-review, too
   soon after the last compaction), and binds the check to the turn that reports
   the result — call it in that same turn, not the next one.
-- Calling it records a suggestion with a free-form `reason`; the suggestion is
+- Calling it records a suggestion for the session; the suggestion is
   latest-wins and one-shot. A rejected suggestion (cooldown or economic gate)
   is dropped, and the model may suggest again later. The tool result tells the
   model the system decides at the next safe boundary, so a quiet boundary after
@@ -58,7 +58,7 @@ The plugin is not activated merely by being present in the repository. Installin
   4. Economic gate: the boundary's `contextTokens` — the engine's own context estimate, the same
       number the automatic compaction gate reads — below `minTokens` rejects the suggestion.
   5. Approved suggestions request compaction with reason `"suggest"`, reusing the engine's safe
-     compaction path. The model's semantic reason only surfaces in logs.
+     compaction path.
 
 ## Knobs
 

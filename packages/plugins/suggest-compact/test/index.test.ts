@@ -51,9 +51,9 @@ async function boot(env: Record<string, string> = {}) {
 
 const toolContext = { sessionID: "ses_test", agent: "build", messageID: "msg_1", id: "c1", progress: () => Effect.void }
 
-const record = async (host: Awaited<ReturnType<typeof boot>>, reason: string): Promise<{ _tag: string; value?: unknown }> => {
+const record = async (host: Awaited<ReturnType<typeof boot>>): Promise<{ _tag: string; value?: unknown }> => {
   const tool = host.tools.get("suggest_compact") as { execute: (input: unknown, ctx: unknown) => Effect.Effect<unknown, unknown> }
-  return await Effect.runPromiseExit(tool.execute({ reason }, toolContext))
+  return await Effect.runPromiseExit(tool.execute({}, toolContext))
 }
 
 const suggestion: { compact: true; reason: string } = { compact: true, reason: "other-plugin" }
@@ -116,7 +116,7 @@ describe("suggest-compact", () => {
     let event = await boundary(host, step({ n: 1, chars: 1_000 }))
     expect(event.result?.compact).toBeUndefined()
 
-    const run = await record(host, "stage boundary")
+    const run = await record(host)
     expect(run._tag).toBe("Success")
     expect((run as { value: { output: { received: boolean } } }).value.output).toEqual({ received: true })
 
@@ -129,7 +129,7 @@ describe("suggest-compact", () => {
 
   test("rejects a suggestion below the token gate and drops it", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "1000" })
-    await record(host, "stage boundary")
+    await record(host)
 
     let event = await boundary(host, step({ n: 1, chars: 100 }))
     expect(event.result?.compact).toBeUndefined()
@@ -140,21 +140,21 @@ describe("suggest-compact", () => {
 
   test("gates on the engine's context estimate, not the serialized request", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "1000" })
-    await record(host, "engine number decides")
+    await record(host)
 
     // 40k chars would read as ~10k tokens under the serialized-length heuristic;
     // the engine's number says 900 and must decide.
     let event = await boundary(host, step({ n: 1, chars: 40_000, contextTokens: 900 }))
     expect(event.result?.compact).toBeUndefined()
 
-    await record(host, "small request, large context")
+    await record(host)
     event = await boundary(host, step({ n: 2, chars: 40, contextTokens: 1_500 }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
 
   test("falls back to the serialized request when the core predates contextTokens", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "1000" })
-    await record(host, "legacy core")
+    await record(host)
 
     const event = await boundary(host, {
       ...step({ n: 1, chars: 10_000 }),
@@ -166,11 +166,11 @@ describe("suggest-compact", () => {
   test("rejects during cooldown and approves once the window passes", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
 
-    await record(host, "too soon")
+    await record(host)
     let event = await boundary(host, step({ n: 4, chars: 1_000, entries: after("msg_c", 1) }))
     expect(event.result?.compact).toBeUndefined()
 
-    await record(host, "window passed")
+    await record(host)
     event = await boundary(host, step({ n: 5, chars: 1_000, entries: after("msg_c", 2) }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
@@ -181,7 +181,7 @@ describe("suggest-compact", () => {
     // of a counter stamped at observation (which always saw distance zero).
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
 
-    await record(host, "first after compaction")
+    await record(host)
     const event = await boundary(host, step({ n: 9, chars: 1_000, entries: after("msg_c", 4) }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
@@ -189,28 +189,28 @@ describe("suggest-compact", () => {
   test("a fresh compaction entry restarts the cooldown window", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
 
-    await record(host, "old window expired")
+    await record(host)
     let event = await boundary(host, step({ n: 12, chars: 1_000, entries: after("msg_old", 5) }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
 
-    await record(host, "new compaction reset the window")
+    await record(host)
     event = await boundary(host, step({ n: 13, chars: 1_000, entries: after("msg_new", 0) }))
     expect(event.result?.compact).toBeUndefined()
   })
 
   test("measures cooldown from history, so a restart keeps the window", async () => {
     const first = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
-    await record(first, "observed in run A")
+    await record(first)
     await boundary(first, step({ n: 4, chars: 1_000, entries: after("msg_c", 1) }))
 
     // A restarted plugin instance has empty in-memory state, yet the same
     // history yields the same window regardless of run-local step numbers.
     const restarted = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
-    await record(restarted, "suggested after restart")
+    await record(restarted)
     let event = await boundary(restarted, step({ n: 1, chars: 1_000, entries: after("msg_c", 1) }))
     expect(event.result?.compact).toBeUndefined()
 
-    await record(restarted, "window passed")
+    await record(restarted)
     event = await boundary(restarted, step({ n: 1, chars: 1_000, entries: after("msg_c", 2) }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
@@ -218,7 +218,7 @@ describe("suggest-compact", () => {
   test("anchors on the last completed compaction, ignoring failures", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "2" })
 
-    await record(host, "failed compaction does not anchor")
+    await record(host)
     const event = await boundary(host, step({
       n: 6,
       chars: 1_000,
@@ -229,7 +229,7 @@ describe("suggest-compact", () => {
 
   test("keeps the pending signal when compaction is already requested", async () => {
     const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100" })
-    await record(host, "already asked")
+    await record(host)
 
     let event = await boundary(host, step({ n: 1, chars: 1_000, result: suggestion }))
     expect(event.result).toEqual(suggestion)
