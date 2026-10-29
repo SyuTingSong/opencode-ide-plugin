@@ -31,7 +31,7 @@ export default define({
   effect: Effect.fn("SuggestCompact.Plugin")(function* (ctx: Context) {
     const minTokens = envNumber("OPENCODE_SUGGEST_MIN_TOKENS", DEFAULT_MIN_TOKENS)
     const cooldownSteps = envNumber("OPENCODE_SUGGEST_COOLDOWN_STEPS", DEFAULT_COOLDOWN_STEPS)
-    const pending = yield* Ref.make(new Map<string, string>())
+    const pending = yield* Ref.make(new Set<string>())
 
     yield* ctx.tool
       .transform((editor) =>
@@ -42,21 +42,16 @@ export default define({
           options: { codemode: false },
           description:
             "Suggest compacting this session's context at a stage boundary: the moment the work just finished will not be needed in detail for what comes next. Check this at the END of every turn where you report a result, and call it in that same turn, alongside the report — not on the next turn. Trigger when ANY of these just happened: a deliverable was closed (MR/PR merged, pushed and verified, a document finalized, a migration step completed); a delegated task (subagent, dispatched session) returned and you finished verifying it; the next step is a different topic, repository, directory, or phase; the user moves on (\"next\", \"now do X\", a new unrelated request). Do NOT trigger while waiting on background work whose result must be checked against details only in this context, mid-debugging or mid-review with unapplied findings, or when compaction happened only a few turns ago. Self-check: if this session restarted now with a 10-line summary plus the files, MRs and plans on disk, could you do the next step without loss? If yes, call this tool. The engine evaluates the suggestion at the next safe step boundary; recording it is enough.",
-          input: Schema.Struct({
-            reason: Schema.String.annotate({
-              description:
-                "Name the stage that ended, pointers worth carrying (MR links, commit hashes, file paths, pending user decisions), and the next step",
-            }),
-          }),
+          input: Schema.Struct({}),
           output: Schema.Struct({ received: Schema.Boolean }),
-          execute: ({ reason }, context) =>
+          execute: (_, context) =>
             Effect.gen(function* () {
-              yield* Ref.update(pending, (map) => {
-                const next = new Map(map)
-                next.set(context.sessionID, reason)
+              yield* Ref.update(pending, (set) => {
+                const next = new Set(set)
+                next.add(context.sessionID)
                 return next
               })
-              yield* Effect.logInfo("suggest_compact requested", { sessionID: context.sessionID, reason })
+              yield* Effect.logInfo("suggest_compact requested", { sessionID: context.sessionID })
               // Compaction is decided later by the engine (cooldown and token
               // gates); the model must not read a quiet step as a rejection.
               return {
@@ -74,14 +69,14 @@ export default define({
         // Leave an already-requested compaction alone and keep any pending signal.
         if (event.result?.compact) return
         // A rejected suggestion is consumed; the model may suggest again later.
-        const reason = yield* Ref.modify(pending, (map) => {
-          const current = map.get(event.sessionID)
-          if (current === undefined) return [undefined, map] as const
-          const next = new Map(map)
+        const requested = yield* Ref.modify(pending, (set) => {
+          const has = set.has(event.sessionID)
+          if (!has) return [false, set]
+          const next = new Set(set)
           next.delete(event.sessionID)
-          return [current, next] as const
+          return [true, next]
         })
-        if (reason === undefined) return
+        if (!requested) return
 
         // Cooldown counts provider steps recorded after the last completed
         // compaction entry, derived from history on every boundary. Anchoring on
@@ -104,7 +99,6 @@ export default define({
           estTokens,
           approved,
           stepsSinceCompaction,
-          reason,
         })
         if (!approved) return
         // The engine reuses its safe compaction path; "suggest" keeps parity
