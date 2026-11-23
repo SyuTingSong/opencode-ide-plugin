@@ -18,7 +18,7 @@ The script:
 
 1. Detects an in-progress rebase and resumes straight to the build phase.
 2. Otherwise switches to `suggest-compact` (only when the working tree is clean), fetches `upstream dev --tags`, skips the rebase when the branch already contains `upstream/dev`, and otherwise rebases it.
-3. Verifies the pinned bun version, runs `bun install`, reads the latest version from `upstream/dev`'s root `package.json`, and builds the xts binary with `OPENCODE_VERSION=<version>-xts`.
+3. Verifies the pinned bun version, runs `bun install`, and reads the build version from the newest upstream `v*` release tag whose release commit adds only version metadata on top of a parent already in `upstream/dev` (dev's package.json version lags releases; falls back to dev's version when no tag qualifies), and builds the xts binary with `OPENCODE_VERSION=<version>-xts`.
 4. Points `~/.bin/opencode` at the fresh binary (`mkdir -p ~/.bin` then `ln -sfnh`).
 
 It exits non-zero with the list of conflicted files if the rebase needs manual resolution.

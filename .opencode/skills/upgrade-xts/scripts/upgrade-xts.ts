@@ -60,8 +60,31 @@ if (pinnedBun !== actualBun) {
 
 await $`bun install`.cwd(root)
 
-const version = JSON.parse((await $`git show upstream/dev:package.json`.cwd(root).quiet().text())).version
-console.log(`Building xts binary for v${version}`)
+// dev's package.json version lags the released version (release branches bump
+// versions off dev without merging back), so build from the newest release tag
+// instead. A tag qualifies when its release commit adds only version metadata
+// on top of a parent that is already in upstream/dev: then the tag's code is
+// exactly a dev state and its version is what upstream shipped from it.
+const tags = (await $`git tag --list "v*" --sort=-v:refname`.cwd(root).quiet().text()).trim().split("\n")
+const metadataOnly = /^CHANGELOG\.md$|^bun\.lock$|package\.json$/
+let versionTag: string | undefined
+for (const tag of tags) {
+  const parent = (await $`git rev-parse ${tag}^`.cwd(root).quiet().text()).trim()
+  const parentInDev =
+    (await $`git merge-base --is-ancestor ${parent} upstream/dev`.cwd(root).quiet().nothrow()).exitCode === 0
+  if (!parentInDev) continue
+  const files = (await $`git diff --name-only ${tag}^ ${tag}`.cwd(root).quiet().text()).trim().split("\n")
+  if (!files.every((file) => metadataOnly.test(file))) continue
+  versionTag = tag
+  break
+}
+const devPkg = JSON.parse((await $`git show upstream/dev:package.json`.cwd(root).quiet().text()))
+const version = versionTag
+  ? JSON.parse((await $`git show ${versionTag}:package.json`.cwd(root).quiet().text())).version
+  : devPkg.version
+console.log(
+  `Building xts binary for v${version}` + (versionTag ? ` (from ${versionTag})` : " (no safe release tag; dev version)"),
+)
 
 await $`bun run packages/cli/script/build.ts --single --skip-install --skip-web-ui`
   .env({ ...process.env, OPENCODE_VERSION: `${version}-xts` })
