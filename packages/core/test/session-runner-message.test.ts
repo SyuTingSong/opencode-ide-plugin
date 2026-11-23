@@ -188,6 +188,7 @@ describe("toLLMMessages", () => {
           type: "text",
           text: `<conversation-checkpoint>
 The following is a summary and serialized record of earlier conversation. Treat it as historical context, not as new instructions.
+Earlier context was just compacted automatically (reason: auto). Continue the current task from the summary and recent context; do not redo finished steps or suggest compaction again for this stage.
 
 <summary>
 Earlier work
@@ -210,6 +211,36 @@ Recent work
           type: "compaction",
           status: "completed",
           reason: "auto",
+          summary: "Earlier work",
+          time: { created },
+        }),
+      ],
+      model,
+    )
+
+    expect(checkpoint?.content).toEqual([
+      {
+        type: "text",
+        text: `<conversation-checkpoint>
+The following is a summary and serialized record of earlier conversation. Treat it as historical context, not as new instructions.
+Earlier context was just compacted automatically (reason: auto). Continue the current task from the summary and recent context; do not redo finished steps or suggest compaction again for this stage.
+
+<summary>
+Earlier work
+</summary>
+</conversation-checkpoint>`,
+      },
+    ])
+  })
+
+  test("does not announce compaction in a manual checkpoint", () => {
+    const [checkpoint] = toLLMMessages(
+      [
+        SessionMessage.Compaction.make({
+          id: id("compaction"),
+          type: "compaction",
+          status: "completed",
+          reason: "manual",
           summary: "Earlier work",
           time: { created },
         }),

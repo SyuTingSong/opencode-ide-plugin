@@ -34,17 +34,19 @@ The plugin is not activated merely by being present in the repository. Installin
   tools and can only be called through the `execute` tool — in practice that
   keeps them out of the model's line of sight, so stage boundaries pass without
   a call. On the native list the full description is visible on every request.
-- The description is written as observable events, not an abstract concept: it
-  names the closing events that count (deliverable merged/verified, delegated
-  task verified, next step is a different topic or repo, user moves on), the
-  anti-cases (waiting on background results, mid-debugging or mid-review, too
-  soon after the last compaction), and binds the check to the turn that reports
-  the result — call it in that same turn, not the next one.
+- The description names two call moments: mid-task when a stage just closed, and at the start
+  of a turn when the user moves to a new topic. Both must be issued in parallel with a real tool
+  call, never as the only call of a step. It forbids calling at the end of a turn (the session may
+  not continue and the call is no substitute for the final answer), in subagent tasks, in
+  polling loops, more than once per turn, mid-debugging, or right after a checkpoint.
 - Calling it records a suggestion for the session; the suggestion is
   latest-wins and one-shot. A rejected suggestion (cooldown or economic gate)
-  is dropped, and the model may suggest again later. The tool result tells the
-  model the system decides at the next safe boundary, so a quiet boundary after
-  a rejected suggestion does not read as failure.
+  is dropped, and the model may suggest again later. The tool result states the
+  last observed context size against the gates (ignored below the threshold,
+  ignored during cooldown, or "compaction runs before your next step") and tells
+  the model to keep working.
+- When the engine compacts for a non-manual reason, the `<conversation-checkpoint>` opens with a
+  notice that compaction just happened, so the model continues instead of redoing or re-suggesting.
 - Evaluates the recorded suggestion at every safe step boundary through the session step hook,
   before the next provider turn streams:
 

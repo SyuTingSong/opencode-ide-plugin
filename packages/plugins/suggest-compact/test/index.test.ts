@@ -236,4 +236,48 @@ describe("suggest-compact", () => {
     event = await boundary(host, step({ n: 2, chars: 1_000 }))
     expect(event.result).toEqual({ compact: true, reason: "suggest" })
   })
+
+  describe("tool reply", () => {
+    const content = async (host: Awaited<ReturnType<typeof boot>>) =>
+      ((await record(host)) as unknown as { value: { content: string } }).value.content
+
+    test("without an observed boundary, stays generic", async () => {
+      const reply = await content(await boot())
+      expect(reply).toContain("Recorded.")
+      expect(reply).toContain("Continue working")
+    })
+
+    test("reports context below the gate as ignored", async () => {
+      const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100000" })
+      await boundary(host, step({ n: 1, contextTokens: 72_000 }))
+      const reply = await content(host)
+      expect(reply).toContain("ignored")
+      expect(reply).toContain("72k")
+      expect(reply).toContain("100k")
+      expect(reply).toContain("Continue working")
+    })
+
+    test("reports the cooldown as ignored", async () => {
+      const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100", OPENCODE_SUGGEST_COOLDOWN_STEPS: "5" })
+      await boundary(host, step({ n: 1, contextTokens: 200_000, entries: after("msg_c", 2) }))
+      const reply = await content(host)
+      expect(reply).toContain("2 steps ago")
+      expect(reply).toContain("cooldown 5")
+    })
+
+    test("announces the checkpoint when the suggestion would be accepted", async () => {
+      const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100000" })
+      await boundary(host, step({ n: 1, contextTokens: 172_000 }))
+      const reply = await content(host)
+      expect(reply).toContain("172k")
+      expect(reply).toContain("<conversation-checkpoint>")
+      expect(reply).not.toContain("ignored")
+    })
+
+    test("keeps observing the context while a compaction is already requested", async () => {
+      const host = await boot({ OPENCODE_SUGGEST_MIN_TOKENS: "100000" })
+      await boundary(host, step({ n: 1, contextTokens: 50_000, result: suggestion }))
+      expect(await content(host)).toContain("50k")
+    })
+  })
 })
