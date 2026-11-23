@@ -65,7 +65,9 @@ await $`bun install`.cwd(root)
 // instead. A tag qualifies when its release commit adds only version metadata
 // on top of a parent that is already in upstream/dev: then the tag's code is
 // exactly a dev state and its version is what upstream shipped from it.
-const tags = (await $`git tag --list "v*" --sort=-v:refname`.cwd(root).quiet().text()).trim().split("\n")
+// The "v[0-9]*" glob excludes sibling-versioned tags such as "vscode-v1.0.0",
+// whose version-only diff would otherwise qualify before the real release tags.
+const tags = (await $`git tag --list "v[0-9]*" --sort=-v:refname`.cwd(root).quiet().text()).trim().split("\n")
 const metadataOnly = /^CHANGELOG\.md$|^bun\.lock$|package\.json$/
 let versionTag: string | undefined
 for (const tag of tags) {
