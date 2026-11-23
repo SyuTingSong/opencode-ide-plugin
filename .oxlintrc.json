@@ -184,6 +184,7 @@
   "ignorePatterns": [
     "**/node_modules",
     "**/dist",
+    "packages/stats/**",
     "**/.build",
     "**/.sst",
     "**/*.d.ts",
